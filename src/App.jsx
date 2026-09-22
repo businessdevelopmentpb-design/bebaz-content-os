@@ -71,6 +71,7 @@ function App(){
   const [monthFilter,setMonthFilter]=useState('All')
   const [showForm,setShowForm]=useState(false)
   const [metricContent,setMetricContent]=useState(null)
+  const [detailContent,setDetailContent]=useState(null)
   const [notice,setNotice]=useState('')
   const fileInput=useRef(null)
 
@@ -181,7 +182,7 @@ function App(){
     <main>
       <header><div><div className="eyebrow">CONTENT GROWTH OPERATING SYSTEM</div><h1>{page}</h1><p>Plan better creative, ship faster, learn from performance, connect content to business impact.</p></div><div className="header-actions"><button className="secondary icon-btn" onClick={loadAll} title="Refresh"><RefreshCw size={16}/></button>{canEdit&&<button className="primary" onClick={()=>setShowForm(true)}><Plus size={17}/>New Content</button>}</div></header>
       {notice&&<div className="notice"><span>{notice}</span><button onClick={()=>setNotice('')}><X size={15}/></button></div>}
-      {page==='Dashboard'&&<Dashboard rows={mergedRows} published={published} inProduction={inProduction} onSchedule={onSchedule} totalViews={totalViews} revenue={revenue}/>}
+      {page==='Dashboard'&&<Dashboard rows={mergedRows} published={published} inProduction={inProduction} onSchedule={onSchedule} totalViews={totalViews} revenue={revenue} onOpenDetail={setDetailContent}/>}
       {page==='Content Plan'&&<ContentPlan rows={filtered} loading={loading} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter} brandFilter={brandFilter} setBrandFilter={setBrandFilter} platformFilter={platformFilter} setPlatformFilter={setPlatformFilter} picFilter={picFilter} setPicFilter={setPicFilter} monthFilter={monthFilter} setMonthFilter={setMonthFilter} brands={options('brand')} platforms={options('platform')} teamMembers={teamMembers} months={options('publish_date').map(x=>x.slice(0,7)).filter((x,i,a)=>a.indexOf(x)===i).sort().reverse()} canEdit={canEdit} exportCsv={exportCsv} importClick={()=>fileInput.current?.click()}/>}
       {page==='Workflow'&&<Workflow rows={mergedRows} moveStage={moveStage} canEdit={canEdit}/>}
       {page==='Performance'&&<Performance rows={mergedRows} onEdit={setMetricContent} canEdit={canEdit}/>}
@@ -191,20 +192,26 @@ function App(){
     </main>
     {showForm&&<NewContent teamMembers={teamMembers} onClose={()=>setShowForm(false)} onSave={saveContent}/>}
     {metricContent&&<MetricsModal content={metricContent} metrics={metrics[metricContent.id]||EMPTY_METRICS} onClose={()=>setMetricContent(null)} onSave={saveMetrics}/>}
+    {detailContent&&<ContentDetail content={detailContent} onClose={()=>setDetailContent(null)} onOpenPlan={()=>{
+      setQuery(detailContent.content_code||detailContent.title||'')
+      setStatusFilter('All');setBrandFilter('All');setPlatformFilter('All');setPicFilter('All');setMonthFilter('All')
+      setPage('Content Plan')
+      setDetailContent(null)
+    }}/>}
   </div>
 }
 
-function Dashboard({rows,published,inProduction,onSchedule,totalViews,revenue}){
+function Dashboard({rows,published,inProduction,onSchedule,totalViews,revenue,onOpenDetail}){
   const needsReview=rows.filter(r=>['internal_review','revision'].includes(r.status)).length
   const onTimeRate=rows.length?onSchedule/rows.length*100:0
   const cards=[['Total Planned',rows.length],['Published',published],['In Production',inProduction],['On-time Rate',pct(onTimeRate)],['Total Views',num(totalViews)],['Attributed Revenue',money(revenue)]]
   return <><section className="metrics-grid">{cards.map(([k,v])=><div className="metric" key={k}><span>{k}</span><strong>{v}</strong></div>)}</section>
-    <ContentCalendar rows={rows}/>
+    <ContentCalendar rows={rows} onOpenDetail={onOpenDetail}/>
     <section className="two-col"><div className="panel"><div className="panel-head"><h2>Current pipeline</h2><span>{needsReview} need review</span></div>{WORKFLOW_STAGES.map(([value,label])=>{const c=rows.filter(r=>r.status===value).length;return <div className="summary-line" key={value}><span>{label}</span><div><b>{c}</b><i style={{width:`${Math.min(100,c/Math.max(1,rows.length)*500)}%`}}/></div></div>})}</div>
     <div className="panel"><div className="panel-head"><h2>Head priorities</h2></div><div className="priority"><Sparkles/><div><b>Creative quality before volume</b><p>Challenge hook, storytelling, shareability and CTA before publishing.</p></div></div><div className="priority"><Users/><div><b>Clear ownership</b><p>Every content item should have one accountable PIC, deadline and next action.</p></div></div><div className="priority"><Gauge/><div><b>Close the learning loop</b><p>Published content is not done until performance and learnings are recorded.</p></div></div></div></section></>
 }
 
-function ContentCalendar({rows}){
+function ContentCalendar({rows,onOpenDetail}){
   const today=new Date()
   const [cursor,setCursor]=useState(()=>new Date(today.getFullYear(),today.getMonth(),1))
   const year=cursor.getFullYear()
@@ -250,10 +257,10 @@ function ContentCalendar({rows}){
       return <div className={`calendar-cell${isToday?' today':''}`} key={dateKey}>
         <div className="calendar-date"><span>{day}</span>{items.length>0&&<em>{items.length}</em>}</div>
         <div className="calendar-items">
-          {items.slice(0,3).map(item=><div className={`calendar-item cal-${item.status}`} key={item.id} title={item.title}>
+          {items.slice(0,3).map(item=><button type="button" className={`calendar-item cal-${item.status}`} key={item.id} title={`Open detail: ${item.title}`} onClick={()=>onOpenDetail?.(item)}>
             <span className="calendar-dot"/>
             <div><b>{item.title}</b><small>{item.platform||'-'}{item.pic_name?` · ${item.pic_name}`:''}</small></div>
-          </div>)}
+          </button>)}
           {items.length>3&&<div className="calendar-more">+{items.length-3} more content</div>}
         </div>
       </div>
@@ -320,6 +327,82 @@ function NewContent({teamMembers,onClose,onSave}){
     <label>Content pillar<input value={f.content_pillar||''} onChange={e=>set('content_pillar',e.target.value)}/></label><label>Topic<input value={f.topic||''} onChange={e=>set('topic',e.target.value)}/></label><label>Platform<input value={f.platform||''} onChange={e=>set('platform',e.target.value)}/></label><label>Post type<input value={f.post_type||''} onChange={e=>set('post_type',e.target.value)}/></label>
     <label className="span2">Hook<input value={f.hook||''} onChange={e=>set('hook',e.target.value)}/></label><label>CTA<input value={f.cta||''} onChange={e=>set('cta',e.target.value)}/></label><label className="span3">Brief URL<input value={f.brief_url||''} onChange={e=>set('brief_url',e.target.value)}/></label>
   </div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Create content</button></div></form></div>
+}
+
+
+function ContentDetail({content,onClose,onOpenPlan}){
+  const metricsFilled=['views','reach','likes','comments','shares','saves','profile_visits','link_clicks','transactions','revenue'].some(k=>Number(content[k]||0)>0)
+  const eng=Number(content.likes||0)+Number(content.comments||0)+Number(content.shares||0)+Number(content.saves||0)
+  const detailRows=[
+    ['Content ID',content.content_code||'-'],
+    ['Posting date',content.publish_date||'-'],
+    ['Status',stageLabel[content.status]||content.status||'-'],
+    ['Brand',prettyBrand(content.brand)||'-'],
+    ['Content pillar',content.content_pillar||'-'],
+    ['Topic',content.topic||'-'],
+    ['Platform',content.platform||'-'],
+    ['Post type',content.post_type||'-'],
+    ['PIC',content.pic_name||'Unassigned'],
+    ['Editor',content.editor_name||'Unassigned'],
+    ['Schedule',content.schedule_status||'-']
+  ]
+  return <div className="modal detail-modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="modal-card detail-card">
+      <div className="detail-hero">
+        <div>
+          <div className="eyebrow">CONTENT DETAIL</div>
+          <h2>{content.title}</h2>
+          <div className="detail-tags">
+            <span className={`status-pill s-${content.status}`}>{stageLabel[content.status]||content.status}</span>
+            <span>{content.content_code||'No ID'}</span>
+            <span>{content.publish_date||'No posting date'}</span>
+          </div>
+        </div>
+        <button type="button" className="close-btn detail-close" onClick={onClose}><X/></button>
+      </div>
+
+      <div className="detail-layout">
+        <section className="detail-section">
+          <h3>Content information</h3>
+          <div className="detail-grid">{detailRows.map(([label,value])=><div key={label}><small>{label}</small><b>{value}</b></div>)}</div>
+        </section>
+
+        <section className="detail-section">
+          <h3>Creative direction</h3>
+          <div className="detail-copy"><small>Objective</small><p>{content.objective||'—'}</p></div>
+          <div className="detail-copy"><small>Hook</small><p>{content.hook||'—'}</p></div>
+          <div className="detail-copy"><small>CTA</small><p>{content.cta||'—'}</p></div>
+          <div className="detail-copy"><small>Notes</small><p>{content.notes||'—'}</p></div>
+        </section>
+      </div>
+
+      <section className="detail-section">
+        <div className="panel-head"><h3>Links</h3></div>
+        <div className="detail-links">
+          {content.brief_url?<a href={content.brief_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Brief</a>:<span>Brief —</span>}
+          {content.preview_url?<a href={content.preview_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Preview</a>:<span>Preview —</span>}
+          {content.publish_url?<a href={content.publish_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Published Post</a>:<span>Published —</span>}
+        </div>
+      </section>
+
+      <section className="detail-section">
+        <div className="panel-head"><h3>Performance</h3><span>{metricsFilled?'Recorded metrics':'No performance data yet'}</span></div>
+        <div className="detail-performance">
+          <div><small>Views</small><b>{num(content.views)}</b></div>
+          <div><small>Reach</small><b>{num(content.reach)}</b></div>
+          <div><small>Engagement Rate</small><b>{pct(rate(eng,content.reach))}</b></div>
+          <div><small>Share Rate</small><b>{pct(rate(content.shares,content.views))}</b></div>
+          <div><small>Transactions</small><b>{num(content.transactions)}</b></div>
+          <div><small>Revenue</small><b>{money(content.revenue)}</b></div>
+        </div>
+      </section>
+
+      <div className="modal-actions detail-actions">
+        <button type="button" className="secondary" onClick={onClose}>Close</button>
+        <button type="button" className="primary" onClick={onOpenPlan}>Open in Content Plan</button>
+      </div>
+    </div>
+  </div>
 }
 
 function MetricsModal({content,metrics,onClose,onSave}){
