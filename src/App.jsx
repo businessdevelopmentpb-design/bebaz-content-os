@@ -141,7 +141,20 @@ function App(){
     }
     return out
   },[socialMetrics])
-  const mergedRows=useMemo(()=>rows.map(r=>({...r,...(metrics[r.id]||EMPTY_METRICS),social_platforms:socialByContent[r.id]||{},pic_name:memberName(r.pic_member_id),editor_name:memberName(r.editor_member_id)})),[rows,metrics,teamMembers,socialByContent])
+  const mergedRows=useMemo(()=>rows.map(r=>{
+    const m=metrics[r.id]||EMPTY_METRICS
+    const metricValues=Object.fromEntries(Object.keys(EMPTY_METRICS).map(k=>[k,Number(m[k]||0)]))
+    return {
+      ...r,
+      ...metricValues,
+      metric_id:m.id||null,
+      measured_at:m.measured_at||null,
+      metric_source:m.source||null,
+      social_platforms:socialByContent[r.id]||{},
+      pic_name:memberName(r.pic_member_id),
+      editor_name:memberName(r.editor_member_id)
+    }
+  }),[rows,metrics,teamMembers,socialByContent])
   const options=key=>[...new Set(mergedRows.map(r=>r[key]).filter(Boolean))].sort()
   const filtered=useMemo(()=>mergedRows.filter(r=>{
     const month=r.publish_date?.slice(0,7)||''
