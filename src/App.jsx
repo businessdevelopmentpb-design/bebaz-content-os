@@ -445,7 +445,7 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
         <td><SocialPlatformCell platform="TT" url={r.tiktok_url} metric={tt}/></td>
         <td><div className={`sync-status sync-${r.performance_sync_status||'waiting_link'}`}>
           {['synced','partial'].includes(r.performance_sync_status)?<CheckCircle2 size={13}/>:<AlertCircle size={13}/>}
-          <div><b>{statusLabel(r.performance_sync_status)}</b><small>{r.last_performance_sync_at?new Date(r.last_performance_sync_at).toLocaleString('id-ID'):'Never synced'}</small></div>
+          <div><b>{statusLabel(r.performance_sync_status)}</b><small>{r.performance_sync_error|| (r.last_performance_sync_at?new Date(r.last_performance_sync_at).toLocaleString('id-ID'):'Never synced')}</small></div>
         </div></td>
         <td>{num(r.views)}</td><td>{num(r.reach)}</td><td>{num(r.likes)}</td><td>{num(r.comments)}</td><td>{num(r.shares)}</td><td>{num(r.saves)}</td>
         <td>{pct(rate(eng,r.reach||r.views))}</td><td>{num(r.transactions)}</td><td>{money(r.revenue)}</td>
