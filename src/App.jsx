@@ -259,7 +259,17 @@ function App(){
       }
     }
 
-    const {data,error}=await supabase.rpc('sync_windsor_content',{p_content_id:contentId})
+    let data=null
+    let error=null
+    const direct=await supabase.functions.invoke('sync-social-performance',{body:{content_id:contentId}})
+    if(!direct.error){
+      data=direct.data
+    }else{
+      const fallback=await supabase.rpc('sync_windsor_content',{p_content_id:contentId})
+      data=fallback.data
+      error=fallback.error
+    }
+
     setSyncingIds(x=>({...x,[contentId]:false}))
     if(error){
       if(!quiet)setNotice(`Social sync error: ${error.message}`)
@@ -270,6 +280,7 @@ function App(){
       else if(data?.status==='partial') setNotice('Sebagian link berhasil disinkronkan. Link lainnya masih menunggu data.')
       else if(data?.status==='waiting_link') setNotice('Tambahkan Instagram atau TikTok link terlebih dahulu.')
       else if(data?.status==='waiting_data') setNotice('Link tersimpan, tetapi post belum ditemukan di source saat ini. Sistem akan mencoba lagi pada refresh berikutnya.')
+      else if(data?.status==='connection_required') setNotice('Direct API belum terhubung; fallback source juga tidak tersedia.')
       else if(data?.status==='not_published') setNotice('Performance hanya disinkronkan untuk content berstatus Published.')
     }
     await loadAll()
