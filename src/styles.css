@@ -136,3 +136,5 @@
 .row-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .delete-content-btn{display:inline-flex;align-items:center;gap:5px;color:#a12620;border-color:#efc2be;background:#fff7f6}
 .delete-content-btn:hover{background:#ffe9e6;border-color:#e4a49e}
+
+.pipeline-month{display:block;margin-top:3px;color:var(--muted);font-size:10px;font-weight:800}
