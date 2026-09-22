@@ -199,8 +199,73 @@ function Dashboard({rows,published,inProduction,onSchedule,totalViews,revenue}){
   const onTimeRate=rows.length?onSchedule/rows.length*100:0
   const cards=[['Total Planned',rows.length],['Published',published],['In Production',inProduction],['On-time Rate',pct(onTimeRate)],['Total Views',num(totalViews)],['Attributed Revenue',money(revenue)]]
   return <><section className="metrics-grid">{cards.map(([k,v])=><div className="metric" key={k}><span>{k}</span><strong>{v}</strong></div>)}</section>
+    <ContentCalendar rows={rows}/>
     <section className="two-col"><div className="panel"><div className="panel-head"><h2>Current pipeline</h2><span>{needsReview} need review</span></div>{WORKFLOW_STAGES.map(([value,label])=>{const c=rows.filter(r=>r.status===value).length;return <div className="summary-line" key={value}><span>{label}</span><div><b>{c}</b><i style={{width:`${Math.min(100,c/Math.max(1,rows.length)*500)}%`}}/></div></div>})}</div>
     <div className="panel"><div className="panel-head"><h2>Head priorities</h2></div><div className="priority"><Sparkles/><div><b>Creative quality before volume</b><p>Challenge hook, storytelling, shareability and CTA before publishing.</p></div></div><div className="priority"><Users/><div><b>Clear ownership</b><p>Every content item should have one accountable PIC, deadline and next action.</p></div></div><div className="priority"><Gauge/><div><b>Close the learning loop</b><p>Published content is not done until performance and learnings are recorded.</p></div></div></div></section></>
+}
+
+function ContentCalendar({rows}){
+  const today=new Date()
+  const [cursor,setCursor]=useState(()=>new Date(today.getFullYear(),today.getMonth(),1))
+  const year=cursor.getFullYear()
+  const month=cursor.getMonth()
+  const monthKey=`${year}-${String(month+1).padStart(2,'0')}`
+  const monthName=cursor.toLocaleDateString('en-US',{month:'long',year:'numeric'})
+  const monthRows=rows
+    .filter(r=>r.publish_date?.slice(0,7)===monthKey)
+    .sort((a,b)=>(a.publish_date||'').localeCompare(b.publish_date||'')||(a.title||'').localeCompare(b.title||''))
+  const grouped=monthRows.reduce((acc,row)=>{
+    if(!acc[row.publish_date]) acc[row.publish_date]=[]
+    acc[row.publish_date].push(row)
+    return acc
+  },{})
+  const daysInMonth=new Date(year,month+1,0).getDate()
+  const mondayOffset=(new Date(year,month,1).getDay()+6)%7
+  const cells=[...Array(mondayOffset).fill(null),...Array.from({length:daysInMonth},(_,i)=>i+1)]
+  while(cells.length%7) cells.push(null)
+  const goMonth=delta=>setCursor(new Date(year,month+delta,1))
+  const goToday=()=>setCursor(new Date(today.getFullYear(),today.getMonth(),1))
+  const publishedThisMonth=monthRows.filter(r=>r.status==='published').length
+  const scheduledThisMonth=monthRows.filter(r=>r.status==='scheduled').length
+
+  return <section className="panel calendar-panel">
+    <div className="calendar-head">
+      <div>
+        <div className="eyebrow">CONTENT CALENDAR</div>
+        <h2>{monthName}</h2>
+        <p>{monthRows.length} content planned · {publishedThisMonth} published · {scheduledThisMonth} scheduled</p>
+      </div>
+      <div className="calendar-controls">
+        <button className="secondary calendar-nav" onClick={()=>goMonth(-1)} aria-label="Previous month">‹</button>
+        <button className="secondary" onClick={goToday}>Today</button>
+        <button className="secondary calendar-nav" onClick={()=>goMonth(1)} aria-label="Next month">›</button>
+      </div>
+    </div>
+    <div className="calendar-weekdays">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(d=><div key={d}>{d}</div>)}</div>
+    <div className="calendar-grid">{cells.map((day,index)=>{
+      if(!day) return <div className="calendar-cell empty" key={`empty-${index}`}/>
+      const dateKey=`${monthKey}-${String(day).padStart(2,'0')}`
+      const items=grouped[dateKey]||[]
+      const isToday=dateKey===`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`
+      return <div className={`calendar-cell${isToday?' today':''}`} key={dateKey}>
+        <div className="calendar-date"><span>{day}</span>{items.length>0&&<em>{items.length}</em>}</div>
+        <div className="calendar-items">
+          {items.slice(0,3).map(item=><div className={`calendar-item cal-${item.status}`} key={item.id} title={item.title}>
+            <span className="calendar-dot"/>
+            <div><b>{item.title}</b><small>{item.platform||'-'}{item.pic_name?` · ${item.pic_name}`:''}</small></div>
+          </div>)}
+          {items.length>3&&<div className="calendar-more">+{items.length-3} more content</div>}
+        </div>
+      </div>
+    })}</div>
+    <div className="calendar-legend">
+      <span><i className="legend-dot published"/>Published</span>
+      <span><i className="legend-dot scheduled"/>Scheduled</span>
+      <span><i className="legend-dot editing"/>Editing / Production</span>
+      <span><i className="legend-dot review"/>Review / Revision</span>
+      <span><i className="legend-dot other"/>Other</span>
+    </div>
+  </section>
 }
 
 function ContentPlan(p){
@@ -250,7 +315,7 @@ function NewContent({teamMembers,onClose,onSave}){
   const [f,setF]=useState({content_code:'',title:'',publish_date:'',status:'idea',brand:'PB',content_pillar:'Promotion',topic:'Branding',platform:'Instagram & TikTok',post_type:'Video',pic_member_id:'',brief_url:'',preview_url:'',publish_url:'',objective:'',hook:'',cta:''})
   const set=(k,v)=>setF(x=>({...x,[k]:v||null}))
   return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><form className="modal-card large" onSubmit={e=>{e.preventDefault();onSave(f)}}><div className="modal-title"><div><h2>New Content</h2><p>Create one accountable content record.</p></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div><div className="form-grid">
-    <label className="span2">Title<input required value={f.title} onChange={e=>set('title',e.target.value)}/></label><label>Publish date<input type="date" value={f.publish_date||''} onChange={e=>set('publish_date',e.target.value)}/></label>
+    <label className="span2">Title<input required value={f.title} onChange={e=>set('title',e.target.value)}/></label><label>Posting deadline<input type="date" value={f.publish_date||''} onChange={e=>set('publish_date',e.target.value)}/><small className="field-help">Automatically appears in Dashboard Calendar</small></label>
     <label>Status<select value={f.status} onChange={e=>set('status',e.target.value)}>{STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label>Brand<input value={f.brand||''} onChange={e=>set('brand',e.target.value)}/></label><label>PIC<select value={f.pic_member_id||''} onChange={e=>set('pic_member_id',e.target.value)}><option value="">Unassigned</option>{teamMembers.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
     <label>Content pillar<input value={f.content_pillar||''} onChange={e=>set('content_pillar',e.target.value)}/></label><label>Topic<input value={f.topic||''} onChange={e=>set('topic',e.target.value)}/></label><label>Platform<input value={f.platform||''} onChange={e=>set('platform',e.target.value)}/></label><label>Post type<input value={f.post_type||''} onChange={e=>set('post_type',e.target.value)}/></label>
     <label className="span2">Hook<input value={f.hook||''} onChange={e=>set('hook',e.target.value)}/></label><label>CTA<input value={f.cta||''} onChange={e=>set('cta',e.target.value)}/></label><label className="span3">Brief URL<input value={f.brief_url||''} onChange={e=>set('brief_url',e.target.value)}/></label>
