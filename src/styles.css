@@ -144,3 +144,14 @@
 .period-bar select{min-width:190px;border:1px solid var(--line);border-radius:9px;padding:9px 10px;background:#fff;font-weight:800}
 .insights-period-summary{display:flex;justify-content:space-between;align-items:center;margin:-4px 0 12px;padding:0 2px}.insights-period-summary b{font-size:14px}.insights-period-summary span{font-size:10px;color:var(--muted);font-weight:800}
 @media(max-width:700px){.period-bar{align-items:stretch;flex-direction:column}.period-bar select{width:100%;min-width:0}.insights-period-summary{display:block}.insights-period-summary span{display:block;margin-top:3px}}
+
+.performance-edit-modal{width:min(920px,calc(100vw - 36px));padding:24px 24px 20px}
+.performance-metrics-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-top:6px}
+.performance-metrics-grid label{display:grid;gap:7px;font-size:11px;font-weight:900}
+.performance-metrics-grid input{width:100%;min-width:0;height:44px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:14px;font-weight:800;background:#fff}
+.performance-edit-modal .modal-title{margin-bottom:18px}
+.performance-edit-modal .modal-actions{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
+.performance-panel .table-wrap table th,.performance-panel .table-wrap table td{white-space:nowrap}
+.performance-panel .title-cell{min-width:240px;white-space:normal}
+@media(max-width:900px){.performance-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.performance-edit-modal{padding:20px 16px 16px}.performance-metrics-grid{grid-template-columns:1fr}.performance-edit-modal .modal-actions{display:grid;grid-template-columns:1fr 1fr}}
