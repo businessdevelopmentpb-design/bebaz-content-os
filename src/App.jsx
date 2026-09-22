@@ -314,25 +314,51 @@ function App(){
   async function loadSocialConnections(){
     if(!session)return
     setSocialLoading(true)
-    const {data,error}=await supabase.from('social_sync_sources').select('*').eq('source','windsor').maybeSingle()
-    setSocialLoading(false)
-    if(error)return setNotice(`Social connection error: ${error.message}`)
-    const connected=data?.status==='connected'
-    setSocialConnections([
-      {platform:'instagram',status:connected?'connected':'error',account_id:data?.instagram_account_id||null,account_name:data?.instagram_account_name||null,last_refreshed_at:data?.last_synced_at||null,last_error:data?.last_error||null,connection_source:'windsor'},
-      {platform:'tiktok',status:connected?'connected':'error',account_id:data?.tiktok_account_id||null,account_name:data?.tiktok_account_name||null,last_refreshed_at:data?.last_synced_at||null,last_error:data?.last_error||null,connection_source:'windsor'}
+    const [direct,fallback]=await Promise.all([
+      supabase.functions.invoke('social-oauth',{body:{action:'status'}}),
+      supabase.from('social_sync_sources').select('*').eq('source','windsor').maybeSingle()
     ])
-    setSocialConfigured({instagram:connected,tiktok:connected})
-    setSocialCallback('')
+    setSocialLoading(false)
+
+    if(fallback.error)return setNotice(`Social connection error: ${fallback.error.message}`)
+    const windsor=fallback.data
+    const windsorConnected=windsor?.status==='connected'
+    const directRows=direct.data?.connections||[]
+    const merged=['instagram','tiktok'].map(platform=>{
+      const d=directRows.find(x=>x.platform===platform)||{platform,status:'not_connected'}
+      return {
+        ...d,
+        fallback_connected:windsorConnected,
+        fallback_account_name:platform==='instagram'?windsor?.instagram_account_name:windsor?.tiktok_account_name,
+        fallback_last_synced_at:windsor?.last_synced_at||null,
+        fallback_error:windsor?.last_error||null
+      }
+    })
+    setSocialConnections(merged)
+    setSocialConfigured(direct.data?.configured||{instagram:false,tiktok:false})
+    setSocialCallback(direct.data?.callback_url||'https://ltqgbwomlhuyxxdmghih.supabase.co/functions/v1/social-oauth')
   }
 
-  async function connectSocial(){
-    setNotice('Instagram dan TikTok dikelola melalui Windsor.ai dan sudah terhubung.')
+  async function connectSocial(platform){
+    if(!socialConfigured?.[platform]){
+      setNotice(`${platform==='instagram'?'Instagram':'TikTok'} Direct API belum punya developer credentials. Backend sudah siap; credentials perlu dibuat/di-authorize satu kali di developer portal.`)
+      return
+    }
+    setSocialLoading(true)
+    const {data,error}=await supabase.functions.invoke('social-oauth',{body:{action:'start',platform}})
+    setSocialLoading(false)
+    if(error)return setNotice(`Connect ${platform} error: ${error.message}`)
+    if(data?.url)window.location.href=data.url
+  }
+
+  async function disconnectSocial(platform){
+    if(!window.confirm(`Disconnect Direct API ${platform}? Windsor fallback tidak ikut diputus.`))return
+    setSocialLoading(true)
+    const {data,error}=await supabase.functions.invoke('social-oauth',{body:{action:'disconnect',platform}})
+    setSocialLoading(false)
+    if(error)return setNotice(error.message)
+    setNotice(`${platform==='instagram'?'Instagram':'TikTok'} Direct API disconnected.`)
     await loadSocialConnections()
-  }
-
-  async function disconnectSocial(){
-    setNotice('Koneksi social dikelola melalui Windsor.ai. Disconnect dilakukan dari Windsor jika memang diperlukan.')
   }
 
   function exportCsv(){
@@ -615,46 +641,55 @@ function Insights({rows}){
 }
 
 
-function SocialConnections({connections,loading,onRefresh}){
+function SocialConnections({connections,configured,callbackUrl,loading,onConnect,onDisconnect,onRefresh}){
   const getConnection=platform=>connections.find(x=>x.platform===platform)||{platform,status:'not_connected'}
   const cards=[
-    {platform:'instagram',name:'Instagram',Icon:Instagram,description:'Performance Instagram untuk reporting internal.'},
-    {platform:'tiktok',name:'TikTok',Icon:Music2,description:'Performance TikTok untuk reporting internal.'}
+    {platform:'instagram',name:'Instagram',Icon:Instagram,description:'Official Instagram Direct API for internal performance reporting.'},
+    {platform:'tiktok',name:'TikTok',Icon:Music2,description:'Official TikTok Display API for internal performance reporting.'}
   ]
   const formatDate=value=>value?new Date(value).toLocaleString('id-ID'):'—'
   return <div className="social-connections-page">
     <section className="social-connect-hero">
-      <div><div className="eyebrow">FREE-FIRST SOCIAL REPORTING</div><h2>Rp0 recurring-cost architecture</h2><p>Urutan provider sekarang: Direct API resmi (gratis) → Windsor trial sebagai fallback sementara → manual performance fallback. Tidak ada fitur Content OS yang mewajibkan subscription Windsor.</p></div>
+      <div><div className="eyebrow">ZERO-SUBSCRIPTION SOCIAL REPORTING</div><h2>Direct API first, fallback second</h2><p>Target permanen adalah API resmi Instagram/TikTok. Windsor hanya bridge sementara sampai Direct API selesai di-authorize satu kali.</p></div>
       <button className="secondary" onClick={onRefresh} disabled={loading}><RefreshCw size={16} className={loading?'spin':''}/>Refresh Status</button>
     </section>
     <div className="social-connection-grid">{cards.map(({platform,name,Icon,description})=>{
       const conn=getConnection(platform)
-      const isConnected=conn.status==='connected'
-      return <section className={`social-connection-card ${isConnected?'connected':''}`} key={platform}>
-        <div className="social-card-head"><div className={`social-logo social-${platform}`}><Icon size={24}/></div><div><h3>{name}</h3><span className={`connection-pill connection-${conn.status||'not_connected'}`}>{isConnected?'Temporary Windsor bridge':'Fallback unavailable'}</span></div></div>
+      const directConnected=conn.status==='connected'
+      const isConfigured=Boolean(configured?.[platform])
+      return <section className={`social-connection-card ${directConnected?'connected':''}`} key={platform}>
+        <div className="social-card-head">
+          <div className={`social-logo social-${platform}`}><Icon size={24}/></div>
+          <div><h3>{name}</h3><span className={`connection-pill connection-${directConnected?'connected':'not_connected'}`}>{directConnected?'Direct API Connected':isConfigured?'Ready to Authorize':'Developer App Required'}</span></div>
+        </div>
         <p>{description}</p>
         <div className="connection-details">
-          <div><small>Current account</small><b>{conn.account_name||'—'}</b></div>
-          <div><small>Current source</small><b>{isConnected?'Windsor trial':'Manual fallback'}</b></div>
-          <div><small>Target source</small><b>Official Direct API</b></div>
-          <div><small>Cache refreshed</small><b>{formatDate(conn.last_refreshed_at)}</b></div>
+          <div><small>Direct API account</small><b>{conn.account_name||'Not connected'}</b></div>
+          <div><small>Direct API token</small><b>{directConnected?`Valid until ${formatDate(conn.token_expires_at)}`:'—'}</b></div>
+          <div><small>Windsor fallback</small><b>{conn.fallback_connected?`${conn.fallback_account_name||'photobebaz.id'} · Connected`:'Unavailable'}</b></div>
+          <div><small>Fallback refreshed</small><b>{formatDate(conn.fallback_last_synced_at)}</b></div>
         </div>
-        {conn.last_error&&<div className="connection-error"><AlertCircle size={15}/><span>{conn.last_error}</span></div>}
-        <div className="scope-box"><ShieldCheck size={15}/><div><small>Free mode</small><b>Direct API akan menjadi primary source setelah one-time developer authorization selesai. Windsor tidak diperlukan untuk jangka panjang.</b></div></div>
+        <div className="scope-box"><ShieldCheck size={15}/><div><small>Permanent free target</small><b>{platform==='instagram'?'Instagram Professional API + Insights':'TikTok Display API · user.info.basic + video.list'}</b></div></div>
+        <div className="connection-actions">
+          {directConnected?<><button className="secondary" onClick={()=>onConnect(platform)} disabled={!isConfigured||loading}>Reconnect</button><button className="danger-btn" onClick={()=>onDisconnect(platform)} disabled={loading}>Disconnect Direct API</button></>:
+          <button className="primary" onClick={()=>onConnect(platform)} disabled={!isConfigured||loading}>{isConfigured?<><PlugZap size={16}/>Authorize Direct API</>:<>Developer Credentials Needed</>}</button>}
+        </div>
       </section>
     })}</div>
     <section className="panel connection-setup">
-      <div className="panel-head"><div><h2>Free-mode architecture</h2><span>Dirancang supaya workflow tim tidak berubah saat Windsor dilepas.</span></div></div>
+      <div className="panel-head"><div><h2>One-time authorization only</h2><span>Sesudah ini, token refresh ditangani backend secara otomatis.</span></div></div>
       <div className="setup-flow">
-        <div><b>1</b><p><strong>Supabase Free</strong><span>Database, Auth, RPC, performance snapshots dan Edge Functions tetap di free tier selama masih dalam quota.</span></p></div>
-        <div><b>2</b><p><strong>Official Social APIs</strong><span>Instagram/TikTok direct API menjadi target source tanpa subscription middleware.</span></p></div>
-        <div><b>3</b><p><strong>Windsor = temporary bridge</strong><span>Dipakai selama trial masih aktif, tetapi bukan dependency wajib.</span></p></div>
-        <div><b>4</b><p><strong>Manual fallback</strong><span>Kalau source otomatis sedang unavailable, business/performance metrics masih dapat dicatat tanpa menghentikan reporting.</span></p></div>
+        <div><b>1</b><p><strong>Instagram Developer App</strong><span>Client ID + Client Secret disimpan hanya di Supabase Edge Function secrets.</span></p></div>
+        <div><b>2</b><p><strong>TikTok Developer App</strong><span>Client Key + Client Secret disimpan hanya di backend.</span></p></div>
+        <div><b>3</b><p><strong>OAuth callback</strong><code>{callbackUrl||'https://ltqgbwomlhuyxxdmghih.supabase.co/functions/v1/social-oauth'}</code></p></div>
+        <div><b>4</b><p><strong>Auto refresh</strong><span>Instagram long-lived token dan TikTok refresh token diperbarui oleh backend sebelum expiry.</span></p></div>
       </div>
-      <div className="security-note"><ShieldCheck size={17}/><p><b>No paid lock-in.</b> Content Plan, Calendar, Workflow, Performance, Insights, PIC List dan seluruh historical data tetap berada di sistem kita sendiri.</p></div>
+      <div className="security-note"><ShieldCheck size={17}/><p><b>No paid middleware required.</b> Setelah dua Direct API connected, Windsor dapat dilepas tanpa mengubah Content Plan, Performance, atau Insights.</p></div>
     </section>
   </div>
 }
+
+
 
 function PicManager({teamMembers,onChanged,setNotice}){
   const [name,setName]=useState('')
