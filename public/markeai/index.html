@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MarkeAI — AI Marketing Workstation</title>
+<script src="https://js.puter.com/v2/"></script>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--line:#e6e8f1;--ink:#12152d;--muted:#6d7388;--pri:#6d4aff;--nav:#101538}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--ink)}
+button,input,textarea,select{font:inherit}.app{display:grid;grid-template-columns:240px 1fr;min-height:100vh}
+.side{background:var(--nav);color:#fff;padding:22px 16px;display:flex;flex-direction:column;gap:18px}.brand{display:flex;gap:10px;align-items:center;padding:4px 6px 16px;border-bottom:1px solid #ffffff1a}.mark{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#8d5cff,#4a7dff);font-weight:900}.brand b{display:block}.brand small{color:#aeb5d9}
+.nav{display:grid;gap:6px}.nav button{border:0;background:transparent;color:#d4d8ef;text-align:left;padding:11px 12px;border-radius:10px;cursor:pointer}.nav button:hover,.nav button.active{background:#7a5cff24;color:#fff}.sidefoot{margin-top:auto;background:linear-gradient(160deg,#27215f,#151a43);border:1px solid #ffffff12;border-radius:14px;padding:14px}.sidefoot p{font-size:12px;line-height:1.5;color:#bcc3e2}
+.main{min-width:0}.top{height:70px;background:#ffffffed;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:5}.search{width:min(620px,60vw);border:1px solid var(--line);background:#f5f6fa;border-radius:12px;padding:11px 13px;color:var(--muted)}.badge{padding:8px 11px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:12px}.content{padding:26px;max-width:1400px;margin:auto}.page{display:none}.page.active{display:block}
+.hero{background:linear-gradient(110deg,#edf0ff,#faf2ff 48%,#eef7ff);border:1px solid #e2e5f3;border-radius:22px;padding:28px;display:flex;align-items:center;justify-content:space-between}.hero h1{font-size:32px;line-height:1.15;margin:0 0 8px}.hero p{margin:0;color:var(--muted)}.hero .robot{font-size:60px}
+.actions{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin:18px 0}.action{background:#fff;border:1px solid var(--line);border-radius:16px;padding:17px;cursor:pointer;min-height:116px}.action:hover{border-color:#d4ceff;box-shadow:0 10px 25px #242a4a12}.action i{font-style:normal;font-size:26px}.action b{display:block;margin:10px 0 4px;font-size:14px}.action span{font-size:12px;color:var(--muted)}
+.card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:19px;margin-top:16px}.head{display:flex;align-items:center;justify-content:space-between;gap:10px}.head h2,.head h3{margin:0}.muted{color:var(--muted)}
+.chatwrap{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px}.chat{height:calc(100vh - 122px);background:#fff;border:1px solid var(--line);border-radius:18px;display:flex;flex-direction:column;overflow:hidden}.chathead{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}.modes{background:#f3f4f8;border-radius:10px;padding:3px}.mode{border:0;background:transparent;padding:7px 11px;border-radius:8px;color:#70768b;cursor:pointer}.mode.active{background:#fff;color:#4c37c0;font-weight:700;box-shadow:0 2px 8px #20264a15}
+.messages{flex:1;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:12px}.msg{max-width:86%;border-radius:14px;padding:12px 14px;line-height:1.55;font-size:14px}.user{align-self:flex-end;background:#6c52e8;color:#fff;border-bottom-right-radius:4px}.ai{align-self:flex-start;background:#f7f8fc;border:1px solid #e9ebf4;border-bottom-left-radius:4px}.route{display:inline-block;padding:3px 8px;border-radius:999px;background:#eee9ff;color:#6044d4;font-size:10px;font-weight:800;margin-bottom:7px}
+.composer{padding:12px;border-top:1px solid var(--line)}.box{border:1px solid #dde0eb;border-radius:14px;padding:9px}.box textarea{width:100%;min-height:66px;border:0;outline:0;resize:vertical}.sendrow{display:flex;justify-content:space-between;align-items:center;gap:8px}.chips{display:flex;gap:6px;flex-wrap:wrap}.chip{border:1px solid var(--line);background:#fff;border-radius:9px;padding:6px 8px;font-size:11px;color:#5f657c;cursor:pointer}.send,.primary{border:0;background:linear-gradient(135deg,#6d4aff,#4a7dff);color:#fff;font-weight:700;border-radius:10px;padding:10px 14px;cursor:pointer}.send{width:38px;height:38px;padding:0}.send:disabled,.primary:disabled{opacity:.45}.secondary{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 11px;cursor:pointer;color:#424861}
+.sidecard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:15px;margin-bottom:12px}.sidecard h4{margin:0 0 9px}.sidecard dt{font-size:10px;color:#8a90a5;margin-top:9px}.sidecard dd{margin:2px 0;font-size:13px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:11px}.field{display:flex;flex-direction:column;gap:6px}.field.full{grid-column:1/-1}.field label{font-size:12px;font-weight:700;color:#4d536b}.field input,.field textarea,.field select{border:1px solid #dfe2ec;border-radius:10px;padding:10px 11px;outline:0}.field textarea{min-height:92px;resize:vertical}.result{margin-top:15px;background:#fafbfe;border:1px solid #e5e7f0;border-radius:14px;padding:17px;line-height:1.6;min-height:110px}.result h2{font-size:18px;color:#352873;margin:16px 0 7px}.result h3{font-size:15px}.result ul{padding-left:20px}
+.projects{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.project{border:1px solid var(--line);background:#fff;border-radius:14px;padding:15px}.project .tag{font-size:10px;background:#eee9ff;color:#6044d4;padding:4px 7px;border-radius:999px;font-weight:700}.project h4{margin:10px 0 6px}.project p{font-size:12px;color:var(--muted);height:36px;overflow:hidden}.empty{text-align:center;border:1px dashed #d8dce8;border-radius:12px;padding:26px;color:var(--muted)}
+.pricing{display:grid;grid-template-columns:1fr 1fr;gap:14px;max-width:900px}.price{border:1px solid var(--line);background:#fff;border-radius:18px;padding:20px}.price.pro{border:2px solid #765cff}.price strong{font-size:34px}
+.loader{display:inline-flex;gap:4px}.loader i{width:6px;height:6px;border-radius:50%;background:#735be9;animation:b 1.1s infinite}.loader i:nth-child(2){animation-delay:.15s}.loader i:nth-child(3){animation-delay:.3s}@keyframes b{0%,80%,100%{opacity:.3;transform:scale(.7)}40%{opacity:1;transform:scale(1)}}
+.toast{position:fixed;right:22px;bottom:22px;background:#11152d;color:#fff;padding:11px 14px;border-radius:10px;font-size:12px;opacity:0;transform:translateY(8px);transition:.2s}.toast.show{opacity:1;transform:none}
+@media(max-width:1100px){.actions{grid-template-columns:repeat(3,1fr)}.chatwrap{grid-template-columns:1fr}.right{display:none}.projects{grid-template-columns:repeat(2,1fr)}}@media(max-width:760px){.app{grid-template-columns:1fr}.side{display:none}.content{padding:14px}.actions{grid-template-columns:repeat(2,1fr)}.hero h1{font-size:24px}.grid2,.pricing,.projects{grid-template-columns:1fr}.field.full{grid-column:auto}.chat{height:calc(100vh - 100px)}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="side">
+<div class="brand"><div class="mark">M</div><div><b>MarkeAI</b><small>AI Marketing Workstation</small></div></div>
+<div class="nav">
+<button class="active" data-page="home">⌂ Home</button>
+<button data-page="chat">✦ Chat dengan AI</button>
+<button data-page="campaign">🚀 Campaign Builder</button>
+<button data-page="brand">◆ Brand Brain</button>
+<button data-page="projects">▤ Projects</button>
+<button data-page="pricing">♛ Free vs Pro</button>
+<button data-page="settings">⚙ Settings</button>
+</div>
+<div class="sidefoot"><b>MarkeAI MVP</b><p>Prompt sederhana dijawab langsung. Problem kompleks masuk ke Expert Engine + DST.</p></div>
+</aside>
+<main class="main">
+<div class="top"><input class="search" value="Tanyakan apa saja tentang marketing..." readonly onclick="go('chat')"><span class="badge" id="aiBadge">AI: Puter</span></div>
+<div class="content">
+
+<section class="page active" id="home">
+<div class="hero"><div><div class="muted" style="font-size:12px;font-weight:700;margin-bottom:7px">AI MARKETING WORKSTATION</div><h1>Apa yang ingin kamu kerjakan hari ini?</h1><p>Dari pertanyaan sederhana sampai campaign strategy, satu workspace.</p></div><div class="robot">🤖✨</div></div>
+<div class="actions">
+<div class="action" onclick="go('campaign')"><i>🚀</i><b>Buat Campaign</b><span>Diagnosis → Strategy → Tactics.</span></div>
+<div class="action" onclick="askPreset('Buat content plan 30 hari untuk brand saya')"><i>🗓️</i><b>Content Planner</b><span>Ide, pillar, format, jadwal.</span></div>
+<div class="action" onclick="askPreset('Lakukan competitor research untuk bisnis saya dan temukan gap pasar')"><i>🔎</i><b>Riset Kompetitor</b><span>Gap, peluang, positioning.</span></div>
+<div class="action" onclick="askPreset('Bantu saya membuat marketing strategy untuk meningkatkan sales')"><i>📈</i><b>Marketing Strategy</b><span>Arah strategi yang actionable.</span></div>
+<div class="action" onclick="askPreset('Berikan 10 ide promosi kreatif yang relevan untuk bisnis saya')"><i>🎁</i><b>Ide Promosi</b><span>Mekanik promo & activation.</span></div>
+<div class="action" onclick="askPreset('Buat 10 pilihan copy iklan untuk produk saya')"><i>✍️</i><b>Copywriting</b><span>Caption, headline, ads.</span></div>
+</div>
+<div class="card"><div class="head"><h3>Otak MarkeAI</h3><span class="muted">Invisible complexity</span></div><div class="actions" style="grid-template-columns:repeat(3,1fr);margin-bottom:0"><div class="action"><b>1. Intent</b><span>Memahami tujuan user.</span></div><div class="action"><b>2. Complexity</b><span>Fast answer atau deep workflow.</span></div><div class="action"><b>3. Workflow</b><span>General / Research / Campaign DST.</span></div></div></div>
+<div class="card"><div class="head"><h3>Project terbaru</h3><button class="secondary" onclick="go('projects')">Lihat semua</button></div><div id="homeProjects" class="projects" style="margin-top:12px"></div></div>
+</section>
+
+<section class="page" id="chat">
+<div class="chatwrap">
+<div class="chat">
+<div class="chathead"><div><b>MarkeAI Chat</b><div class="muted" id="routeStatus" style="font-size:11px">Auto routing aktif</div></div><div class="modes"><button class="mode active" data-mode="auto">Auto</button><button class="mode" data-mode="fast">Fast</button><button class="mode" data-mode="deep">Deep</button></div></div>
+<div class="messages" id="messages"><div class="msg ai"><span class="route">MARKETING BRAIN</span><br>Halo! Ceritakan kebutuhan marketing kamu. Saya akan menentukan sendiri apakah cukup dijawab langsung atau perlu workflow strategis.</div></div>
+<div class="composer"><div class="box"><textarea id="prompt" placeholder="Tanyakan apa saja tentang marketing..."></textarea><div class="sendrow"><div class="chips"><button class="chip" onclick="fill('Buat 5 ide promo untuk coffee shop saat weekday sepi')">Ide promo</button><button class="chip" onclick="fill('Buat caption Instagram launching produk baru')">Caption</button><button class="chip" onclick="fill('Kenapa campaign saya kemarin tidak bekerja?')">Diagnosis</button></div><button class="send" id="sendBtn" onclick="sendChat()">➤</button></div></div></div>
+</div>
+<div class="right"><div class="sidecard"><h4>Brand Brain</h4><dl id="brandSummary"></dl><button class="secondary" style="margin-top:10px" onclick="go('brand')">Edit</button></div><div class="sidecard"><h4>Mode</h4><p class="muted" style="font-size:12px;line-height:1.5">Auto memilih depth berdasarkan prompt. Deep dapat memakai web search untuk pekerjaan kompleks.</p></div></div>
+</div>
+</section>
+
+<section class="page" id="campaign">
+<div class="card" style="margin-top:0"><div class="head"><div><h2>Campaign Builder — DST Engine</h2><div class="muted" style="font-size:12px">Brief → Research → Diagnosis → Strategy → Tactics → KPI</div></div><span class="badge">Expert Workflow</span></div>
+<div class="grid2" style="margin-top:14px">
+<div class="field"><label>Brand / Bisnis</label><input id="cBrand" placeholder="Kopi Senja"></div>
+<div class="field"><label>Produk / Layanan</label><input id="cProduct" placeholder="Coffee shop"></div>
+<div class="field"><label>Objective</label><input id="cObjective" placeholder="Naikkan weekday sales 20%"></div>
+<div class="field"><label>Target Audience</label><input id="cAudience" placeholder="18–30, Jakarta"></div>
+<div class="field"><label>Budget</label><input id="cBudget" placeholder="Rp25.000.000"></div>
+<div class="field"><label>Periode</label><input id="cPeriod" placeholder="4 minggu"></div>
+<div class="field full"><label>Konteks / Constraint</label><textarea id="cContext" placeholder="Masalah saat ini, channel, batasan, kondisi brand..."></textarea></div>
+</div>
+<div style="display:flex;gap:8px;margin-top:13px"><button class="primary" id="campaignBtn" onclick="generateCampaign()">Generate Campaign</button><button class="secondary" onclick="demoCampaign()">Isi contoh</button></div>
+<div class="result" id="campaignResult"><span class="muted">Hasil campaign akan muncul di sini.</span></div>
+</div>
+</section>
+
+<section class="page" id="brand">
+<div class="card" style="margin-top:0"><div class="head"><div><h2>Brand Brain</h2><div class="muted" style="font-size:12px">Disimpan di browser untuk MVP.</div></div><span class="badge">Context Layer</span></div>
+<div class="grid2" style="margin-top:14px">
+<div class="field"><label>Nama Bisnis</label><input id="bName"></div><div class="field"><label>Kategori</label><input id="bCategory"></div>
+<div class="field"><label>Produk / Layanan</label><input id="bProduct"></div><div class="field"><label>Target Market</label><input id="bTarget"></div>
+<div class="field"><label>Positioning</label><input id="bPositioning"></div><div class="field"><label>Tone of Voice</label><input id="bTone"></div>
+<div class="field"><label>Kompetitor</label><input id="bCompetitors"></div><div class="field"><label>Channel Aktif</label><input id="bChannels"></div>
+<div class="field"><label>Budget Marketing</label><input id="bBudget"></div><div class="field"><label>Objective Saat Ini</label><input id="bObjective"></div>
+</div><button class="primary" style="margin-top:13px" onclick="saveBrand()">Simpan Brand Brain</button>
+</div>
+</section>
+
+<section class="page" id="projects"><div class="card" style="margin-top:0"><div class="head"><h2>Projects</h2><button class="secondary" onclick="clearProjects()">Clear</button></div><div id="projectList" class="projects" style="margin-top:13px"></div></div></section>
+
+<section class="page" id="pricing"><div class="card" style="margin-top:0"><h2>Free tetap pintar. Pro lebih dalam.</h2><p class="muted">Pembeda bukan jawaban bodoh vs pintar, tetapi depth, tools, workflow, dan deliverables.</p><div class="pricing"><div class="price"><b>Free</b><p><strong>Rp0</strong></p><ul><li>General marketing chat</li><li>DST basic</li><li>1 Brand Brain</li><li>Auto/Fast</li><li>Project lokal</li></ul></div><div class="price pro"><b>Pro</b><p><strong>Rp199K</strong> / bulan</p><ul><li>Deep workflows</li><li>Deep research</li><li>Multi-brain critique</li><li>Persistent memory</li><li>Deck-ready output</li></ul></div></div></div></section>
+
+<section class="page" id="settings"><div class="card" style="margin-top:0"><h2>Settings</h2><p class="muted">MVP: data disimpan lokal di browser.</p><button class="secondary" onclick="resetLocal()">Reset data lokal</button></div></section>
+</div>
+</main>
+</div>
+<div id="toast" class="toast"></div>
+<script>
+var BRAND_KEY="markeai_brand_v1",PROJECT_KEY="markeai_projects_v1",mode="auto",modelsCache=null;
+function E(s){return String(s||"").replace(/[&<>"']/g,function(m){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]})}
+function markdown(s){s=E(s);s=s.replace(/^### (.*)$/gm,"<h3>$1</h3>").replace(/^## (.*)$/gm,"<h2>$1</h2>").replace(/^# (.*)$/gm,"<h2>$1</h2>").replace(/\*\*(.*?)\*\*/g,"<strong>$1</strong>").replace(/^[-•] (.*)$/gm,"<li>$1</li>");s=s.replace(/(<li>.*?<\/li>\n?)+/gs,function(m){return "<ul>"+m+"</ul>"});return s.replace(/\n/g,"<br>")}
+function toast(s){var t=document.getElementById("toast");t.textContent=s;t.classList.add("show");setTimeout(function(){t.classList.remove("show")},1800)}
+function go(id){document.querySelectorAll(".page").forEach(function(x){x.classList.remove("active")});document.getElementById(id).classList.add("active");document.querySelectorAll(".nav button").forEach(function(x){x.classList.toggle("active",x.dataset.page===id)});if(id==="projects")renderProjects()}
+document.querySelectorAll(".nav button").forEach(function(b){b.onclick=function(){go(b.dataset.page)}});
+document.querySelectorAll(".mode").forEach(function(b){b.onclick=function(){mode=b.dataset.mode;document.querySelectorAll(".mode").forEach(function(x){x.classList.toggle("active",x===b)})}});
+function getBrand(){try{return JSON.parse(localStorage.getItem(BRAND_KEY)||"{}")}catch(e){return {}}}
+function brandCtx(){var b=getBrand();return ["Brand context:","Nama: "+(b.name||"-"),"Kategori: "+(b.category||"-"),"Produk: "+(b.product||"-"),"Target: "+(b.target||"-"),"Positioning: "+(b.positioning||"-"),"Tone: "+(b.tone||"-"),"Kompetitor: "+(b.competitors||"-"),"Channel: "+(b.channels||"-"),"Budget: "+(b.budget||"-"),"Objective: "+(b.objective||"-")].join("\n")}
+function renderBrandSummary(){var b=getBrand(),el=document.getElementById("brandSummary");el.innerHTML="<dt>Bisnis</dt><dd>"+E(b.name||"Belum diisi")+"</dd><dt>Target</dt><dd>"+E(b.target||"-")+"</dd><dt>Positioning</dt><dd>"+E(b.positioning||"-")+"</dd><dt>Objective</dt><dd>"+E(b.objective||"-")+"</dd>"}
+function loadBrand(){var b=getBrand();bName.value=b.name||"";bCategory.value=b.category||"";bProduct.value=b.product||"";bTarget.value=b.target||"";bPositioning.value=b.positioning||"";bTone.value=b.tone||"";bCompetitors.value=b.competitors||"";bChannels.value=b.channels||"";bBudget.value=b.budget||"";bObjective.value=b.objective||""}
+function saveBrand(){localStorage.setItem(BRAND_KEY,JSON.stringify({name:bName.value,category:bCategory.value,product:bProduct.value,target:bTarget.value,positioning:bPositioning.value,tone:bTone.value,competitors:bCompetitors.value,channels:bChannels.value,budget:bBudget.value,objective:bObjective.value}));renderBrandSummary();toast("Brand Brain tersimpan")}
+function classify(t){var x=t.toLowerCase(),intent="general",complexity="low";if(/campaign|kampanye|launch|activation|aktivasi/.test(x))intent="campaign";else if(/kompetitor|competitor|riset|research|trend/.test(x))intent="research";else if(/strategi|strategy|sales turun|growth|positioning/.test(x))intent="strategy";else if(/caption|headline|copy|rewrite|translate|email/.test(x))intent="copywriting";if(t.length>220||/(kenapa|analisis|diagnosis|strategi|campaign|kampanye|budget|target market|kompetitor)/.test(x))complexity="medium";if(t.length>500||/(buatkan campaign|campaign strategy|go to market|launch plan|analisis lengkap|deep research)/.test(x))complexity="high";return {intent:intent,complexity:complexity}}
+async function models(){if(modelsCache)return modelsCache;try{modelsCache=await puter.ai.listModels();return modelsCache}catch(e){return []}}
+async function choose(r){var ms=await models(),ids=ms.map(function(m){return m.id}),has=function(id){return ids.indexOf(id)>=0};if(mode==="fast")return has("gpt-5.6-luna")?"gpt-5.6-luna":undefined;if(mode==="deep"||r.complexity==="high"){var d=["gpt-5.6-sol","claude-opus-4-8","claude-sonnet-4-6","gpt-5.6-luna"];for(var i=0;i<d.length;i++)if(has(d[i]))return d[i]}var a=["gpt-5.6-luna","gpt-5.5","claude-sonnet-4-6"];for(var j=0;j<a.length;j++)if(has(a[j]))return a[j];return undefined}
+function sys(r){return ["Kamu adalah MarkeAI, AI Marketing Workstation untuk marketer Indonesia.","","ATURAN:","1. Prompt sederhana: jawab langsung, natural, useful. Jangan paksa DST.","2. Prompt kompleks: pahami objective, audience, positioning, offer, channel, budget, timeline, KPI, constraint bila relevan.","3. Campaign/strategy kompleks: gunakan Research/Context bila perlu -> Diagnosis -> Strategy -> Tactics -> KPI -> Next Steps.","4. Diagnosis harus menemukan problem sebenarnya. Strategy harus menjawab Diagnosis. Tactics harus menjalankan Strategy.","5. Jangan mengarang fakta pasar sebagai kepastian; tandai asumsi dan gunakan web search bila tersedia.","6. Jawab actionable, terstruktur, profesional, default Bahasa Indonesia.","","Route internal: "+r.intent+" / "+r.complexity,brandCtx()].join("\n")}
+function textOf(r){if(typeof r==="string")return r;if(r&&r.message&&r.message.content){if(typeof r.message.content==="string")return r.message.content;if(Array.isArray(r.message.content))return r.message.content.map(function(x){return x.text||x.content||""}).join("\n")}if(r&&typeof r.text==="string")return r.text;if(r&&Array.isArray(r.content))return r.content.map(function(x){return x.text||x.content||""}).join("\n");try{return JSON.stringify(r,null,2)}catch(e){return String(r)}}
+async function callAI(q,forced){var r=forced||classify(q),m=await choose(r),o={};if(m)o.model=m;if(mode==="deep"||r.intent==="research"||(r.intent==="campaign"&&r.complexity!=="low"))o.tools=[{type:"web_search"}];var resp=await puter.ai.chat([{role:"system",content:sys(r)},{role:"user",content:q}],o);return {text:textOf(resp),route:r,model:m||"auto"}}
+function add(type,html){var d=document.createElement("div");d.className="msg "+type;d.innerHTML=html;messages.appendChild(d);d.scrollIntoView({behavior:"smooth",block:"end"});return d}
+function fill(s){prompt.value=s;go("chat");prompt.focus()}function askPreset(s){fill(s)}
+async function sendChat(){var q=prompt.value.trim();if(!q)return;prompt.value="";add("user",E(q));sendBtn.disabled=true;var wait=add("ai",'<span class="loader"><i></i><i></i><i></i></span>');try{var r=await callAI(q);wait.innerHTML='<span class="route">'+(r.route.complexity==="low"?"GENERAL ASSISTANT":"EXPERT ENGINE")+" · "+E(r.model)+"</span><br>"+markdown(r.text);routeStatus.textContent="Route: "+r.route.intent+" · "+r.route.complexity;saveProject({type:"Chat",title:q.slice(0,65),content:r.text})}catch(e){wait.innerHTML="<b>AI belum merespons.</b><br><span class='muted'>"+E(e.message||e)+"</span><br><br>Pada penggunaan pertama Puter mungkin meminta login untuk mengotorisasi AI."}finally{sendBtn.disabled=false;renderHome()}}
+prompt.addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();sendChat()}})
+function demoCampaign(){cBrand.value="Kopi Senja";cProduct.value="Coffee shop";cObjective.value="Meningkatkan transaksi weekday 20%";cAudience.value="18–30 tahun, Jakarta, suka hangout";cBudget.value="Rp25.000.000";cPeriod.value="4 minggu";cContext.value="Weekday sepi, weekend ramai. Brand affordable dan youthful, tidak ingin terlalu hard selling."}
+async function generateCampaign(){if(!cObjective.value.trim()){toast("Isi objective dulu");return}campaignBtn.disabled=true;campaignResult.innerHTML='<span class="loader"><i></i><i></i><i></i></span> <span class="muted">Menjalankan Campaign Intelligence...</span>';var q=["Buat campaign marketing yang serius dan bisa dieksekusi.","Brand: "+cBrand.value,"Produk: "+cProduct.value,"Objective: "+cObjective.value,"Target: "+cAudience.value,"Budget: "+cBudget.value,"Periode: "+cPeriod.value,"Konteks: "+cContext.value,"","Format wajib:","## 1. Context & Key Assumptions","## 2. Diagnosis","- Business problem","- Consumer tension / insight","- Opportunity","## 3. Strategy","- Strategic objective","- Strategic direction","- Core message","- Channel role","## 4. Tactics","Berikan 5-8 taktik konkret yang nyambung ke strategy.","## 5. Budget Direction","## 6. KPI","## 7. Risks & Validation","## 8. Next 7 Days","Pastikan Strategy menjawab Diagnosis dan Tactics mengeksekusi Strategy."].join("\n");try{var r=await callAI(q,{intent:"campaign",complexity:"high"});campaignResult.innerHTML=markdown(r.text);saveProject({type:"Campaign",title:(cBrand.value||cProduct.value||"Campaign")+" — "+cObjective.value.slice(0,45),content:r.text});renderHome();toast("Campaign tersimpan")}catch(e){campaignResult.innerHTML="<b>Gagal generate.</b><br>"+E(e.message||e)}finally{campaignBtn.disabled=false}}
+function projects(){try{return JSON.parse(localStorage.getItem(PROJECT_KEY)||"[]")}catch(e){return []}}
+function saveProject(p){var a=projects();a.unshift(Object.assign({},p,{id:Date.now(),date:new Date().toISOString()}));localStorage.setItem(PROJECT_KEY,JSON.stringify(a.slice(0,30)))}
+function card(p){return '<div class="project"><span class="tag">'+E(p.type)+'</span><h4>'+E(p.title)+'</h4><p>'+E(p.content).slice(0,120)+'</p><button class="secondary" onclick="openProject('+p.id+')">Buka</button></div>'}
+function renderHome(){var a=projects().slice(0,3);homeProjects.innerHTML=a.length?a.map(card).join(""):'<div class="empty" style="grid-column:1/-1">Belum ada project.</div>'}
+function renderProjects(){var a=projects();projectList.innerHTML=a.length?a.map(card).join(""):'<div class="empty">Belum ada project.</div>'}
+function openProject(id){var p=projects().find(function(x){return x.id===id});if(!p)return;if(p.type==="Campaign"){go("campaign");campaignResult.innerHTML=markdown(p.content)}else{go("chat");add("ai",'<span class="route">SAVED PROJECT</span><br>'+markdown(p.content))}}
+function clearProjects(){localStorage.removeItem(PROJECT_KEY);renderProjects();renderHome();toast("Projects dihapus")}
+function resetLocal(){if(confirm("Hapus semua Brand Brain dan Projects lokal?")){localStorage.removeItem(BRAND_KEY);localStorage.removeItem(PROJECT_KEY);loadBrand();renderBrandSummary();renderHome();toast("Data direset")}}
+async function init(){loadBrand();renderBrandSummary();renderHome();try{var ms=await models();aiBadge.textContent=ms.length?"AI: "+ms.length+"+ model":"AI: Puter"}catch(e){}}
+init();
+</script>
+</body>
+</html>
