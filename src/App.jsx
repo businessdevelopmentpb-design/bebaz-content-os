@@ -39,12 +39,12 @@ function AuthScreen({onSession}){
     })
     setBusy(false)
     if(created?.session){onSession(created.session);return}
-    if(createError?.message?.toLowerCase().includes('already')){
+    if(createError?.message?.toLowerCase().includes('already') || (created?.user && Array.isArray(created.user.identities) && created.user.identities.length===0)){
       setMsg('Password salah. Gunakan password shared Content Team.')
       return
     }
     if(createError){setMsg(createError.message);return}
-    setMsg('Shared account activated. Check the shared email once to confirm it, then sign in again.')
+    setMsg('Akun shared sudah dibuat. Cek email bersama satu kali untuk konfirmasi, lalu sign in kembali.')
   }
   return <div className="login-shell"><form className="login-card" onSubmit={submit}>
     <div className="brand-mark">B</div><h1>Bebaz Content OS</h1><p>Satu link bersama untuk planning, workflow, performance & learning Content Team.</p>
