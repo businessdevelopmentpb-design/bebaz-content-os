@@ -2,7 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {
   BarChart3, CalendarDays, Columns3, Download, FileUp, Gauge, LayoutDashboard,
   LogOut, Plus, Search, Sparkles, Users, X, ExternalLink, RefreshCw,
-  Link2, Zap, CheckCircle2, AlertCircle
+  Link2, Zap, CheckCircle2, AlertCircle, Instagram, Music2, ShieldCheck, PlugZap
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
 
@@ -64,6 +64,10 @@ function App(){
   const [rows,setRows]=useState([])
   const [metrics,setMetrics]=useState({})
   const [socialMetrics,setSocialMetrics]=useState([])
+  const [socialConnections,setSocialConnections]=useState([])
+  const [socialConfigured,setSocialConfigured]=useState({instagram:false,tiktok:false})
+  const [socialCallback,setSocialCallback]=useState('')
+  const [socialLoading,setSocialLoading]=useState(false)
   const [syncingIds,setSyncingIds]=useState({})
   const [loading,setLoading]=useState(true)
   const [query,setQuery]=useState('')
@@ -205,6 +209,40 @@ function App(){
     setNotice('Social performance sync selesai.')
     await loadAll()
   }
+  async function loadSocialConnections(){
+    if(!session)return
+    setSocialLoading(true)
+    const {data,error}=await supabase.functions.invoke('social-oauth',{body:{action:'status'}})
+    setSocialLoading(false)
+    if(error)return setNotice(`Social connection error: ${error.message}`)
+    setSocialConnections(data?.connections||[])
+    setSocialConfigured(data?.configured||{instagram:false,tiktok:false})
+    setSocialCallback(data?.callback_url||'')
+  }
+
+  async function connectSocial(platform){
+    setSocialLoading(true)
+    const {data,error}=await supabase.functions.invoke('social-oauth',{body:{action:'start',platform}})
+    setSocialLoading(false)
+    if(error){
+      setNotice(`Connect ${platform} belum bisa dimulai. Developer credentials perlu diset lebih dulu.`)
+      await loadSocialConnections()
+      return
+    }
+    if(data?.url)window.location.href=data.url
+  }
+
+  async function disconnectSocial(platform){
+    if(!window.confirm(`Disconnect ${platform}? Auto performance sync untuk platform ini akan berhenti.`))return
+    setSocialLoading(true)
+    const {data,error}=await supabase.functions.invoke('social-oauth',{body:{action:'disconnect',platform}})
+    setSocialLoading(false)
+    if(error)return setNotice(error.message)
+    setSocialConnections(data?.connections||[])
+    setSocialConfigured(data?.configured||socialConfigured)
+    setNotice(`${platform==='instagram'?'Instagram':'TikTok'} disconnected.`)
+  }
+
   function exportCsv(){
     const cols=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','brief_url','preview_url','publish_url','instagram_url','tiktok_url']
     const csv=[cols.join(','),...filtered.map(r=>cols.map(c=>csvEscape(r[c])).join(','))].join('\n')
@@ -233,6 +271,23 @@ function App(){
     }
   },[page,session,loading,mergedRows])
 
+  useEffect(()=>{
+    if(page==='Social Connections'&&session)loadSocialConnections()
+  },[page,session])
+
+  useEffect(()=>{
+    if(!session)return
+    const params=new URLSearchParams(window.location.search)
+    const connected=params.get('social_connected')
+    const socialError=params.get('social_error')
+    if(connected||socialError){
+      setPage('Social Connections')
+      if(connected)setNotice(`${connected==='instagram'?'Instagram':'TikTok'} connected successfully.`)
+      if(socialError)setNotice(`Social connection failed: ${socialError}`)
+      window.history.replaceState({},'',window.location.pathname)
+    }
+  },[session])
+
   if(!authReady)return <div className="loading-screen">Loading Bebaz Content OS…</div>
   if(!session)return <AuthScreen onSession={setSession}/>
 
@@ -241,7 +296,7 @@ function App(){
   const onSchedule=mergedRows.filter(r=>r.schedule_status==='On Schedule').length
   const totalViews=mergedRows.reduce((s,r)=>s+Number(r.views||0),0)
   const revenue=mergedRows.reduce((s,r)=>s+Number(r.revenue||0),0)
-  const nav=[['Dashboard',LayoutDashboard],['Content Plan',CalendarDays],['Workflow',Columns3],['Performance',Gauge],['Insights',BarChart3],['PIC List',Users]]
+  const nav=[['Dashboard',LayoutDashboard],['Content Plan',CalendarDays],['Workflow',Columns3],['Performance',Gauge],['Insights',BarChart3],['Social Connections',PlugZap],['PIC List',Users]]
 
   return <div className="app-shell">
     <aside><div className="logo-wrap"><div className="brand-mark small">B</div><div><strong>Bebaz</strong><span>Content OS</span></div></div>
@@ -256,6 +311,7 @@ function App(){
       {page==='Workflow'&&<Workflow rows={mergedRows} moveStage={moveStage} canEdit={canEdit}/>}
       {page==='Performance'&&<Performance rows={mergedRows} onEdit={setMetricContent} onEditLinks={setSocialContent} onSync={syncSocialPerformance} onSyncAll={syncAllPublished} syncingIds={syncingIds} canEdit={canEdit}/>}
       {page==='Insights'&&<Insights rows={mergedRows}/>}
+      {page==='Social Connections'&&<SocialConnections connections={socialConnections} configured={socialConfigured} callbackUrl={socialCallback} loading={socialLoading} onConnect={connectSocial} onDisconnect={disconnectSocial} onRefresh={loadSocialConnections}/>}
       {page==='PIC List'&&<PicManager teamMembers={teamMembers} onChanged={loadAll} setNotice={setNotice}/>}
       <input ref={fileInput} hidden type="file" accept=".csv,text/csv" onChange={e=>importCsv(e.target.files?.[0])}/>
     </main>
@@ -426,6 +482,52 @@ function Insights({rows}){
   const top=[...rows].filter(r=>Number(r.views||0)>0).sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,8)
   return <><div className="three-col">{[['Content Pillar','content_pillar'],['Platform','platform'],['Post Type','post_type']].map(([title,key])=><section className="panel" key={key}><h2>{title}</h2>{by(key).map(([name,v])=><div className="insight-row" key={name}><div><b>{name}</b><small>{v.count} content</small></div><div><b>{num(v.views)} views</b><small>{num(v.shares)} shares · {money(v.revenue)}</small></div></div>)}</section>)}</div>
     <section className="panel top-panel"><div className="panel-head"><h2>Top-performing content</h2><span>{top.length? 'Based on recorded views':'No performance data recorded yet'}</span></div>{top.length?top.map((r,i)=><div className="top-row" key={r.id}><b>#{i+1}</b><div><strong>{r.title}</strong><small>{r.content_code} · {r.platform}</small></div><div><strong>{num(r.views)} views</strong><small>{num(r.shares)} shares · {money(r.revenue)}</small></div></div>):<div className="empty-state">Performance is intentionally blank until the team enters real metrics.</div>}</section></>
+}
+
+function SocialConnections({connections,configured,callbackUrl,loading,onConnect,onDisconnect,onRefresh}){
+  const getConnection=platform=>connections.find(x=>x.platform===platform)||{platform,status:'not_connected'}
+  const cards=[
+    {platform:'instagram',name:'Instagram',Icon:Instagram,description:'Connect PhotoBebaz Instagram Professional account to sync Reel/Post performance.',scopes:'instagram_business_basic + instagram_business_manage_insights'},
+    {platform:'tiktok',name:'TikTok',Icon:Music2,description:'Connect PhotoBebaz TikTok account to sync public video performance.',scopes:'user.info.basic + video.list'}
+  ]
+  const formatDate=value=>value?new Date(value).toLocaleString('id-ID'):'—'
+  return <div className="social-connections-page">
+    <section className="social-connect-hero">
+      <div><div className="eyebrow">OFFICIAL SOCIAL API</div><h2>Connect social accounts once</h2><p>Setelah connected, tim cukup paste link Instagram/TikTok pada Published Content. Access token dan refresh token disimpan server-side di Supabase, bukan di browser.</p></div>
+      <button className="secondary" onClick={onRefresh} disabled={loading}><RefreshCw size={16} className={loading?'spin':''}/>Refresh Status</button>
+    </section>
+    <div className="social-connection-grid">{cards.map(({platform,name,Icon,description,scopes})=>{
+      const conn=getConnection(platform)
+      const isConnected=conn.status==='connected'
+      const isConfigured=Boolean(configured?.[platform])
+      return <section className={`social-connection-card ${isConnected?'connected':''}`} key={platform}>
+        <div className="social-card-head"><div className={`social-logo social-${platform}`}><Icon size={24}/></div><div><h3>{name}</h3><span className={`connection-pill connection-${conn.status||'not_connected'}`}>{isConnected?'Connected':conn.status==='error'?'Connection Error':isConfigured?'Ready to Connect':'Needs App Credentials'}</span></div></div>
+        <p>{description}</p>
+        <div className="connection-details">
+          <div><small>Connected account</small><b>{conn.account_name||'—'}</b></div>
+          <div><small>Account ID</small><b>{conn.account_id||'—'}</b></div>
+          <div><small>Token expires</small><b>{formatDate(conn.token_expires_at)}</b></div>
+          <div><small>Last refreshed</small><b>{formatDate(conn.last_refreshed_at)}</b></div>
+        </div>
+        {conn.last_error&&<div className="connection-error"><AlertCircle size={15}/><span>{conn.last_error}</span></div>}
+        <div className="scope-box"><ShieldCheck size={15}/><div><small>Requested permissions</small><b>{scopes}</b></div></div>
+        <div className="connection-actions">
+          {isConnected?<><button className="secondary" onClick={()=>onConnect(platform)} disabled={!isConfigured||loading}>Reconnect</button><button className="danger-btn" onClick={()=>onDisconnect(platform)} disabled={loading}>Disconnect</button></>:
+          <button className="primary" onClick={()=>onConnect(platform)} disabled={!isConfigured||loading}>{isConfigured?<><PlugZap size={16}/>Connect {name}</>:<>Needs Developer Credentials</>}</button>}
+        </div>
+      </section>
+    })}</div>
+    <section className="panel connection-setup">
+      <div className="panel-head"><div><h2>One-time developer setup</h2><span>This is required before the Connect buttons become active.</span></div></div>
+      <div className="setup-flow">
+        <div><b>1</b><p><strong>Create / configure Meta app</strong><span>Add Instagram API with Instagram Login and request Insights permissions.</span></p></div>
+        <div><b>2</b><p><strong>Create / configure TikTok app</strong><span>Add Login Kit + Display API and request user.info.basic + video.list.</span></p></div>
+        <div><b>3</b><p><strong>Register the same callback URL</strong><code>{callbackUrl||'Loading callback URL…'}</code></p></div>
+        <div><b>4</b><p><strong>Store credentials in Supabase Edge Function Secrets</strong><span>INSTAGRAM_CLIENT_ID, INSTAGRAM_CLIENT_SECRET, TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET.</span></p></div>
+      </div>
+      <div className="security-note"><ShieldCheck size={17}/><p><b>Secret-safe architecture.</b> Client secrets, access tokens and refresh tokens never enter GitHub or Vercel frontend code. The browser only sees connection status.</p></div>
+    </section>
+  </div>
 }
 
 function PicManager({teamMembers,onChanged,setNotice}){
