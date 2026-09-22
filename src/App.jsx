@@ -555,7 +555,7 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
       <div className="table-wrap"><table><thead><tr>
         <th>Content</th><th>Instagram</th><th>TikTok</th><th>Sync</th>
         <th>Views</th><th>Reach</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Saves</th>
-        <th>ER</th><th>Transactions</th><th>Revenue</th><th>Actions</th>
+        <th>ER</th><th>Actions</th>
       </tr></thead><tbody>{published.map(r=>{
         const eng=Number(r.likes||0)+Number(r.comments||0)+Number(r.shares||0)+Number(r.saves||0)
         const ig=r.social_platforms?.instagram
@@ -569,7 +569,7 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
             <div><b>{statusLabel(r.performance_sync_status)}</b><small>{r.performance_sync_error|| (r.last_performance_sync_at?new Date(r.last_performance_sync_at).toLocaleString('id-ID'):'Never synced')}</small></div>
           </div></td>
           <td>{num(r.views)}</td><td>{num(r.reach)}</td><td>{num(r.likes)}</td><td>{num(r.comments)}</td><td>{num(r.shares)}</td><td>{num(r.saves)}</td>
-          <td>{pct(rate(eng,r.reach||r.views))}</td><td>{num(r.transactions)}</td><td>{money(r.revenue)}</td>
+          <td>{pct(rate(eng,r.reach||r.views))}</td>
           <td><div className="performance-actions">
             {canEdit&&<button className="mini-btn" onClick={()=>onEditLinks(r)}><Link2 size={13}/>Links</button>}
             {canEdit&&(r.instagram_url||r.tiktok_url)&&<button className="mini-btn" disabled={syncingIds[r.id]} onClick={()=>onSync(r.id)}><RefreshCw size={13} className={syncingIds[r.id]?'spin':''}/>{syncingIds[r.id]?'Syncing':'Sync'}</button>}
@@ -825,13 +825,13 @@ function NumericInput({value,onChange,step='1',min='0'}){
 }
 
 function MetricsModal({content,metrics,onClose,onSave}){
-  const fields=[['views','Views'],['reach','Reach'],['likes','Likes'],['comments','Comments'],['shares','Shares'],['saves','Saves'],['profile_visits','Profile Visits'],['link_clicks','Link Clicks'],['voucher_claims','Voucher Claims'],['transactions','Transactions'],['revenue','Revenue (IDR)']]
+  const fields=[['views','Views'],['reach','Reach'],['likes','Likes'],['comments','Comments'],['shares','Shares'],['saves','Saves'],['profile_visits','Profile Visits'],['link_clicks','Link Clicks']]
   const [f,setF]=useState(Object.fromEntries(fields.map(([k])=>[k,Number(metrics[k]||0)])))
   const submit=()=>{
     const clean=Object.fromEntries(fields.map(([k])=>[k,Number(f[k]||0)]))
     onSave(content.id,clean)
   }
-  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><form className="modal-card" onSubmit={e=>{e.preventDefault();submit()}}><div className="modal-title"><div><div className="eyebrow">EDIT PERFORMANCE</div><h2>Edit Performance</h2><p>{content.content_code} · {content.title}</p><small className="manual-edit-note">Manual values are preserved until you press Sync again.</small></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div><div className="form-grid metrics-form">{fields.map(([k,l])=><label key={k}>{l}<NumericInput value={f[k]} step={k==='revenue'?'1000':'1'} onChange={value=>setF(x=>({...x,[k]:value}))}/></label>)}</div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Save Changes</button></div></form></div>
+  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><form className="modal-card performance-edit-modal" onSubmit={e=>{e.preventDefault();submit()}}><div className="modal-title"><div><div className="eyebrow">EDIT PERFORMANCE</div><h2>Edit Performance</h2><p>{content.content_code} · {content.title}</p><small className="manual-edit-note">Manual values are preserved until you press Sync again.</small></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div><div className="metrics-form performance-metrics-grid">{fields.map(([k,l])=><label key={k}>{l}<NumericInput value={f[k]} onChange={value=>setF(x=>({...x,[k]:value}))}/></label>)}</div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Save Changes</button></div></form></div>
 }
 
 export default App
