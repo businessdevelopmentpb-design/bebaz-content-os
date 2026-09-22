@@ -125,3 +125,10 @@
 
 .social-api-note.windsor-ready{background:#eefaf3;border-color:#c7ead5;color:#17643b}
 .sync-waiting_data{color:#8b5b00}
+
+.content-form-modal textarea{width:100%;resize:vertical;min-height:120px;border:1px solid var(--line);border-radius:9px;padding:10px 11px;font:inherit;line-height:1.5;background:#fff}
+.content-form-modal textarea:focus,.content-form-modal input:focus,.content-form-modal select:focus{outline:2px solid rgba(255,42,135,.16);border-color:var(--pink)}
+.edit-content-btn{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.manual-edit-note{display:block;margin-top:7px;color:#a20051;font-size:10px;font-weight:800}
+.sync-manual{color:#7b3db3}
+.metrics-form input{font-variant-numeric:tabular-nums}
