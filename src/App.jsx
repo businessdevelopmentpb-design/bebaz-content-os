@@ -1,7 +1,8 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {
   BarChart3, CalendarDays, Columns3, Download, FileUp, Gauge, LayoutDashboard,
-  LogOut, Plus, Search, Sparkles, Users, X, ExternalLink, RefreshCw
+  LogOut, Plus, Search, Sparkles, Users, X, ExternalLink, RefreshCw,
+  Link2, Zap, CheckCircle2, AlertCircle
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
 
@@ -62,6 +63,8 @@ function App(){
   const [page,setPage]=useState('Dashboard')
   const [rows,setRows]=useState([])
   const [metrics,setMetrics]=useState({})
+  const [socialMetrics,setSocialMetrics]=useState([])
+  const [syncingIds,setSyncingIds]=useState({})
   const [loading,setLoading]=useState(true)
   const [query,setQuery]=useState('')
   const [statusFilter,setStatusFilter]=useState('All')
@@ -71,9 +74,11 @@ function App(){
   const [monthFilter,setMonthFilter]=useState('All')
   const [showForm,setShowForm]=useState(false)
   const [metricContent,setMetricContent]=useState(null)
+  const [socialContent,setSocialContent]=useState(null)
   const [detailContent,setDetailContent]=useState(null)
   const [notice,setNotice]=useState('')
   const fileInput=useRef(null)
+  const autoSyncAttempted=useRef(new Set())
 
   useEffect(()=>{
     supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)})
@@ -84,16 +89,18 @@ function App(){
   const loadAll=useCallback(async()=>{
     if(!session) return
     setLoading(true)
-    const [t,c,m]=await Promise.all([
+    const [t,c,m,s]=await Promise.all([
       supabase.from('team_members').select('*').eq('is_active',true).order('name'),
       supabase.from('contents').select('*').order('publish_date',{ascending:false,nullsFirst:false}),
-      supabase.from('content_metrics').select('*').order('measured_at',{ascending:false})
+      supabase.from('content_metrics').select('*').order('measured_at',{ascending:false}),
+      supabase.from('social_post_metrics').select('*').order('synced_at',{ascending:false,nullsFirst:false})
     ])
-    if(t.error||c.error||m.error){setNotice(`Load error: ${t.error?.message||c.error?.message||m.error?.message}`);setLoading(false);return}
+    if(t.error||c.error||m.error||s.error){setNotice(`Load error: ${t.error?.message||c.error?.message||m.error?.message||s.error?.message}`);setLoading(false);return}
     setTeamMembers(t.data||[])
     const latest={}
     for(const x of (m.data||[])) if(!latest[x.content_id]) latest[x.content_id]=x
     setMetrics(latest)
+    setSocialMetrics(s.data||[])
     const content=c.data||[]
     setRows(content)
     setLoading(false)
@@ -105,6 +112,7 @@ function App(){
     const ch=supabase.channel('content-os-live')
       .on('postgres_changes',{event:'*',schema:'public',table:'contents'},()=>loadAll())
       .on('postgres_changes',{event:'*',schema:'public',table:'content_metrics'},()=>loadAll())
+      .on('postgres_changes',{event:'*',schema:'public',table:'social_post_metrics'},()=>loadAll())
       .on('postgres_changes',{event:'*',schema:'public',table:'team_members'},()=>loadAll())
       .subscribe()
     return()=>supabase.removeChannel(ch)
@@ -112,7 +120,15 @@ function App(){
 
   const canEdit=Boolean(session)
   const memberName=id=>teamMembers.find(p=>p.id===id)?.name||''
-  const mergedRows=useMemo(()=>rows.map(r=>({...r,...(metrics[r.id]||EMPTY_METRICS),pic_name:memberName(r.pic_member_id),editor_name:memberName(r.editor_member_id)})),[rows,metrics,teamMembers])
+  const socialByContent=useMemo(()=>{
+    const out={}
+    for(const row of socialMetrics){
+      if(!out[row.content_id]) out[row.content_id]={}
+      if(!out[row.content_id][row.platform]) out[row.content_id][row.platform]=row
+    }
+    return out
+  },[socialMetrics])
+  const mergedRows=useMemo(()=>rows.map(r=>({...r,...(metrics[r.id]||EMPTY_METRICS),social_platforms:socialByContent[r.id]||{},pic_name:memberName(r.pic_member_id),editor_name:memberName(r.editor_member_id)})),[rows,metrics,teamMembers,socialByContent])
   const options=key=>[...new Set(mergedRows.map(r=>r[key]).filter(Boolean))].sort()
   const filtered=useMemo(()=>mergedRows.filter(r=>{
     const month=r.publish_date?.slice(0,7)||''
@@ -146,8 +162,51 @@ function App(){
     if(error) return setNotice(error.message)
     setMetricContent(null);setNotice('Performance updated.');loadAll()
   }
+
+  async function syncSocialPerformance(contentId,{quiet=false}={}){
+    setSyncingIds(x=>({...x,[contentId]:true}))
+    const {data,error}=await supabase.functions.invoke('sync-social-performance',{body:{content_id:contentId}})
+    setSyncingIds(x=>({...x,[contentId]:false}))
+    if(error){
+      if(!quiet)setNotice(`Social sync error: ${error.message}`)
+      return {ok:false,error}
+    }
+    if(!quiet){
+      if(data?.status==='synced') setNotice('Social performance synced.')
+      else if(data?.status==='partial') setNotice('Sebagian social performance berhasil disinkronkan.')
+      else if(data?.status==='connection_required') setNotice('Link tersimpan. Hubungkan Instagram/TikTok API satu kali agar metrics bisa ditarik otomatis.')
+      else if(data?.status==='waiting_link') setNotice('Tambahkan Instagram atau TikTok link terlebih dahulu.')
+      else if(data?.status==='error') setNotice('Link tersimpan, tetapi post belum bisa dibaca dari API social.')
+    }
+    await loadAll()
+    return {ok:true,data}
+  }
+
+  async function saveSocialLinks(contentId,links){
+    const clean={
+      instagram_url:links.instagram_url?.trim()||null,
+      tiktok_url:links.tiktok_url?.trim()||null,
+      performance_sync_status:(links.instagram_url?.trim()||links.tiktok_url?.trim())?'ready':'waiting_link',
+      performance_sync_error:null
+    }
+    const {error}=await supabase.from('contents').update(clean).eq('id',contentId)
+    if(error)return setNotice(error.message)
+    setSocialContent(null)
+    setNotice('Social links saved. Syncing performance…')
+    await loadAll()
+    await syncSocialPerformance(contentId)
+  }
+
+  async function syncAllPublished(){
+    const targets=mergedRows.filter(r=>r.status==='published'&&(r.instagram_url||r.tiktok_url))
+    if(!targets.length)return setNotice('Belum ada published content yang memiliki Instagram/TikTok link.')
+    setNotice(`Syncing ${targets.length} published content…`)
+    for(const row of targets) await syncSocialPerformance(row.id,{quiet:true})
+    setNotice('Social performance sync selesai.')
+    await loadAll()
+  }
   function exportCsv(){
-    const cols=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','brief_url','preview_url','publish_url']
+    const cols=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','brief_url','preview_url','publish_url','instagram_url','tiktok_url']
     const csv=[cols.join(','),...filtered.map(r=>cols.map(c=>csvEscape(r[c])).join(','))].join('\n')
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`bebaz-content-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href)
   }
@@ -155,7 +214,7 @@ function App(){
     if(!file||!canEdit)return
     const text=await file.text();const lines=parseCsv(text);if(lines.length<2)return
     const headers=lines[0].map(x=>x.trim());const items=lines.slice(1).filter(r=>r.some(Boolean)).map(vals=>Object.fromEntries(headers.map((h,i)=>[h,vals[i]||null])))
-    const accepted=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','brief_url','preview_url','publish_url','notes']
+    const accepted=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','brief_url','preview_url','publish_url','instagram_url','tiktok_url','notes']
     const payload=items.map(item=>Object.fromEntries(accepted.filter(k=>item[k]!=null&&item[k]!=='').map(k=>[k,item[k]]))).filter(x=>x.title).map(x=>({...x,created_by:session.user.id,status:x.status||'idea'}))
     if(!payload.length)return setNotice('CSV has no valid rows.')
     const {error}=await supabase.from('contents').upsert(payload,{onConflict:'content_code'})
@@ -163,6 +222,16 @@ function App(){
     fileInput.current.value=''
   }
   function parseCsv(text){let rows=[],row=[],cell='',quoted=false;for(let i=0;i<text.length;i++){let ch=text[i];if(ch==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(ch===','&&!quoted){row.push(cell);cell=''}else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell=''}else cell+=ch}if(cell||row.length){row.push(cell);rows.push(row)}return rows}
+
+  useEffect(()=>{
+    if(page!=='Performance'||!session||loading)return
+    const candidates=mergedRows.filter(r=>r.status==='published'&&(r.instagram_url||r.tiktok_url)&&r.auto_sync_performance!==false)
+    for(const row of candidates){
+      if(autoSyncAttempted.current.has(row.id))continue
+      autoSyncAttempted.current.add(row.id)
+      syncSocialPerformance(row.id,{quiet:true})
+    }
+  },[page,session,loading,mergedRows])
 
   if(!authReady)return <div className="loading-screen">Loading Bebaz Content OS…</div>
   if(!session)return <AuthScreen onSession={setSession}/>
@@ -185,13 +254,14 @@ function App(){
       {page==='Dashboard'&&<Dashboard rows={mergedRows} published={published} inProduction={inProduction} onSchedule={onSchedule} totalViews={totalViews} revenue={revenue} onOpenDetail={setDetailContent}/>}
       {page==='Content Plan'&&<ContentPlan rows={filtered} loading={loading} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter} brandFilter={brandFilter} setBrandFilter={setBrandFilter} platformFilter={platformFilter} setPlatformFilter={setPlatformFilter} picFilter={picFilter} setPicFilter={setPicFilter} monthFilter={monthFilter} setMonthFilter={setMonthFilter} brands={options('brand')} platforms={options('platform')} teamMembers={teamMembers} months={options('publish_date').map(x=>x.slice(0,7)).filter((x,i,a)=>a.indexOf(x)===i).sort().reverse()} canEdit={canEdit} exportCsv={exportCsv} importClick={()=>fileInput.current?.click()}/>}
       {page==='Workflow'&&<Workflow rows={mergedRows} moveStage={moveStage} canEdit={canEdit}/>}
-      {page==='Performance'&&<Performance rows={mergedRows} onEdit={setMetricContent} canEdit={canEdit}/>}
+      {page==='Performance'&&<Performance rows={mergedRows} onEdit={setMetricContent} onEditLinks={setSocialContent} onSync={syncSocialPerformance} onSyncAll={syncAllPublished} syncingIds={syncingIds} canEdit={canEdit}/>}
       {page==='Insights'&&<Insights rows={mergedRows}/>}
       {page==='PIC List'&&<PicManager teamMembers={teamMembers} onChanged={loadAll} setNotice={setNotice}/>}
       <input ref={fileInput} hidden type="file" accept=".csv,text/csv" onChange={e=>importCsv(e.target.files?.[0])}/>
     </main>
     {showForm&&<NewContent teamMembers={teamMembers} onClose={()=>setShowForm(false)} onSave={saveContent}/>}
     {metricContent&&<MetricsModal content={metricContent} metrics={metrics[metricContent.id]||EMPTY_METRICS} onClose={()=>setMetricContent(null)} onSave={saveMetrics}/>}
+    {socialContent&&<SocialLinksModal content={socialContent} onClose={()=>setSocialContent(null)} onSave={saveSocialLinks}/>}
     {detailContent&&<ContentDetail content={detailContent} onClose={()=>setDetailContent(null)} onOpenPlan={()=>{
       setQuery(detailContent.content_code||detailContent.title||'')
       setStatusFilter('All');setBrandFilter('All');setPlatformFilter('All');setPicFilter('All');setMonthFilter('All')
@@ -290,7 +360,66 @@ function ContentPlan(p){
 
 function Workflow({rows,moveStage,canEdit}){return <div className="kanban">{WORKFLOW_STAGES.map(([value,label])=><div className="lane" key={value}><div className="lane-head"><b>{label}</b><span>{rows.filter(r=>r.status===value).length}</span></div>{rows.filter(r=>r.status===value).map(r=><article key={r.id}><small>{prettyBrand(r.brand)} · {r.platform||'No platform'}</small><h3>{r.title}</h3><p>{r.pic_name||'No PIC'} · {r.publish_date||'No date'}</p>{canEdit?<select value={r.status} onChange={e=>moveStage(r.id,e.target.value)}>{WORKFLOW_STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:<span className="status-pill">{label}</span>}</article>)}</div>)}</div>}
 
-function Performance({rows,onEdit,canEdit}){return <section className="panel"><div className="panel-head"><h2>Published content performance</h2><span>Enter real platform data only</span></div><div className="table-wrap"><table><thead><tr><th>Content</th><th>Views</th><th>Reach</th><th>Shares</th><th>Saves</th><th>ER</th><th>Share Rate</th><th>Clicks</th><th>Transactions</th><th>Revenue</th><th>Impact</th><th></th></tr></thead><tbody>{rows.filter(r=>r.status==='published').map(r=>{const eng=Number(r.likes||0)+Number(r.comments||0)+Number(r.shares||0)+Number(r.saves||0);return <tr key={r.id}><td className="title-cell"><b>{r.title}</b><small>{r.content_code} · {r.platform||'-'}</small></td><td>{num(r.views)}</td><td>{num(r.reach)}</td><td>{num(r.shares)}</td><td>{num(r.saves)}</td><td>{pct(rate(eng,r.reach))}</td><td>{pct(rate(r.shares,r.views))}</td><td>{num(r.link_clicks)}</td><td>{num(r.transactions)}</td><td>{money(r.revenue)}</td><td><b>{impactScore(r).toFixed(1)}</b></td><td>{canEdit&&<button className="mini-btn" onClick={()=>onEdit(r)}>Update</button>}</td></tr>})}</tbody></table></div></section>}
+function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdit}){
+  const published=rows.filter(r=>r.status==='published')
+  const linked=published.filter(r=>r.instagram_url||r.tiktok_url).length
+  const synced=published.filter(r=>['synced','partial'].includes(r.performance_sync_status)).length
+  const statusLabel=s=>({
+    synced:'Synced',partial:'Partial',syncing:'Syncing',connection_required:'Connect API',
+    error:'Sync Error',ready:'Ready',waiting_link:'Waiting Link',not_published:'Not Published'
+  }[s]||'Waiting Link')
+
+  return <section className="panel performance-panel">
+    <div className="performance-hero">
+      <div>
+        <div className="eyebrow">AUTO PERFORMANCE TRACKER</div>
+        <h2>Published content automatically enters Performance</h2>
+        <p>Paste Instagram and/or TikTok post links. Content OS will sync social metrics through the official platform APIs after the social accounts are connected once.</p>
+      </div>
+      <button className="secondary" onClick={onSyncAll}><Zap size={16}/>Sync All Linked</button>
+    </div>
+    <div className="performance-summary">
+      <div><small>Published</small><b>{published.length}</b></div>
+      <div><small>With Social Link</small><b>{linked}</b></div>
+      <div><small>API Synced</small><b>{synced}</b></div>
+      <div><small>Waiting Link</small><b>{published.length-linked}</b></div>
+    </div>
+    <div className="social-api-note"><AlertCircle size={16}/><div><b>Official API connection required once</b><span>Instagram must be a Professional account. TikTok metrics are available only for videos belonging to the TikTok account that authorized the app. TikTok does not expose Reach or Saves through Display API, so those fields remain 0 for TikTok-only posts.</span></div></div>
+    <div className="table-wrap"><table><thead><tr>
+      <th>Content</th><th>Instagram</th><th>TikTok</th><th>Sync</th>
+      <th>Views</th><th>Reach</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Saves</th>
+      <th>ER</th><th>Transactions</th><th>Revenue</th><th>Actions</th>
+    </tr></thead><tbody>{published.map(r=>{
+      const eng=Number(r.likes||0)+Number(r.comments||0)+Number(r.shares||0)+Number(r.saves||0)
+      const ig=r.social_platforms?.instagram
+      const tt=r.social_platforms?.tiktok
+      return <tr key={r.id}>
+        <td className="title-cell"><b>{r.title}</b><small>{r.content_code} · {r.platform||'-'}</small></td>
+        <td><SocialPlatformCell platform="IG" url={r.instagram_url} metric={ig}/></td>
+        <td><SocialPlatformCell platform="TT" url={r.tiktok_url} metric={tt}/></td>
+        <td><div className={`sync-status sync-${r.performance_sync_status||'waiting_link'}`}>
+          {['synced','partial'].includes(r.performance_sync_status)?<CheckCircle2 size={13}/>:<AlertCircle size={13}/>}
+          <div><b>{statusLabel(r.performance_sync_status)}</b><small>{r.last_performance_sync_at?new Date(r.last_performance_sync_at).toLocaleString('id-ID'):'Never synced'}</small></div>
+        </div></td>
+        <td>{num(r.views)}</td><td>{num(r.reach)}</td><td>{num(r.likes)}</td><td>{num(r.comments)}</td><td>{num(r.shares)}</td><td>{num(r.saves)}</td>
+        <td>{pct(rate(eng,r.reach||r.views))}</td><td>{num(r.transactions)}</td><td>{money(r.revenue)}</td>
+        <td><div className="performance-actions">
+          {canEdit&&<button className="mini-btn" onClick={()=>onEditLinks(r)}><Link2 size={13}/>Links</button>}
+          {canEdit&&(r.instagram_url||r.tiktok_url)&&<button className="mini-btn" disabled={syncingIds[r.id]} onClick={()=>onSync(r.id)}><RefreshCw size={13} className={syncingIds[r.id]?'spin':''}/>{syncingIds[r.id]?'Syncing':'Sync'}</button>}
+          {canEdit&&<button className="mini-btn" onClick={()=>onEdit(r)}>Business</button>}
+        </div></td>
+      </tr>
+    })}</tbody></table></div>
+  </section>
+}
+
+function SocialPlatformCell({platform,url,metric}){
+  if(!url)return <span className="social-empty">No link</span>
+  return <div className="social-platform-cell">
+    <a href={url} target="_blank" rel="noreferrer"><ExternalLink size={13}/>{platform}</a>
+    {metric?.synced_at?<small>{num(metric.views)} views</small>:<small>Waiting sync</small>}
+  </div>
+}
 
 function Insights({rows}){
   const by=key=>Object.entries(rows.reduce((a,r)=>{const k=r[key]||'Unclassified';if(!a[k])a[k]={count:0,views:0,shares:0,revenue:0};a[k].count++;a[k].views+=Number(r.views||0);a[k].shares+=Number(r.shares||0);a[k].revenue+=Number(r.revenue||0);return a},{})).sort((a,b)=>b[1].views-a[1].views||b[1].count-a[1].count)
@@ -402,6 +531,24 @@ function ContentDetail({content,onClose,onOpenPlan}){
         <button type="button" className="primary" onClick={onOpenPlan}>Open in Content Plan</button>
       </div>
     </div>
+  </div>
+}
+
+function SocialLinksModal({content,onClose,onSave}){
+  const [instagram,setInstagram]=useState(content.instagram_url||'')
+  const [tiktok,setTiktok]=useState(content.tiktok_url||'')
+  const validIg=!instagram||/^https?:\/\/(www\.)?instagram\.com\//i.test(instagram)
+  const validTt=!tiktok||/^https?:\/\/(www\.|vm\.|vt\.)?tiktok\.com\//i.test(tiktok)
+  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
+    <form className="modal-card social-links-modal" onSubmit={e=>{e.preventDefault();if(validIg&&validTt)onSave(content.id,{instagram_url:instagram,tiktok_url:tiktok})}}>
+      <div className="modal-title"><div><div className="eyebrow">SOCIAL PERFORMANCE LINKS</div><h2>{content.title}</h2><p>Paste the published post URL. Saving immediately triggers performance sync.</p></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div>
+      <div className="social-link-fields">
+        <label><span>Instagram post / Reel URL</span><input value={instagram} onChange={e=>setInstagram(e.target.value)} placeholder="https://www.instagram.com/reel/..."/>{!validIg&&<small className="field-error">Masukkan link Instagram yang valid.</small>}</label>
+        <label><span>TikTok video URL</span><input value={tiktok} onChange={e=>setTiktok(e.target.value)} placeholder="https://www.tiktok.com/@account/video/..."/>{!validTt&&<small className="field-error">Masukkan link TikTok yang valid.</small>}</label>
+      </div>
+      <div className="social-link-explain"><Zap size={17}/><p><b>Auto-sync flow:</b> link disimpan → Content OS mencari post/video ID → mengambil metrics API → menyimpan snapshot → Performance & Insights ter-update otomatis.</p></div>
+      <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={!validIg||!validTt}>Save & Sync</button></div>
+    </form>
   </div>
 }
 
