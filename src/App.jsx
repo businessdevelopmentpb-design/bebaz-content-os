@@ -24,6 +24,16 @@ const CONTENT_TYPES=['Feeds','Video','Carousel']
 const normalizeBrand=b=>b==='PB'?'PhotoBebaz':b==='Bebaz Land'?'BebazLand':b==='BL & PB'?'PhotoBebaz':(CONTENT_BRANDS.includes(b)?b:'PhotoBebaz')
 const normalizePlatform=p=>p==='TikTok'?'Tiktok':(CONTENT_PLATFORMS.includes(p)?p:'Instagram & TikTok')
 const normalizeType=t=>t==='Feed'?'Feeds':(CONTENT_TYPES.includes(t)?t:'Video')
+const currentMonthKey=()=>{
+  const d=new Date()
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
+}
+const formatMonthKey=key=>{
+  if(key==='All')return 'All Months'
+  const [y,m]=String(key).split('-').map(Number)
+  if(!y||!m)return key
+  return new Date(y,m-1,1).toLocaleDateString('en-US',{month:'long',year:'numeric'})
+}
 const money=n=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(n||0))
 const num=n=>new Intl.NumberFormat('id-ID').format(Number(n||0))
 const pct=n=>`${Number(n||0).toFixed(2)}%`
@@ -281,9 +291,10 @@ function App(){
     await syncSocialPerformance(contentId)
   }
 
-  async function syncAllPublished(){
-    const targets=mergedRows.filter(r=>r.status==='published'&&(r.instagram_url||r.tiktok_url)&&!r.performance_manual_override)
-    if(!targets.length)return setNotice('Belum ada published content yang memiliki Instagram/TikTok link.')
+  async function syncAllPublished(scopeRows=null){
+    const base=Array.isArray(scopeRows)?scopeRows:mergedRows
+    const targets=base.filter(r=>r.status==='published'&&(r.instagram_url||r.tiktok_url)&&!r.performance_manual_override)
+    if(!targets.length)return setNotice('Belum ada published content pada periode ini yang memiliki Instagram/TikTok link.')
     setNotice(`Syncing ${targets.length} published content…`)
     for(const row of targets) await syncSocialPerformance(row.id,{quiet:true})
     setNotice('Social performance sync selesai.')
@@ -489,10 +500,33 @@ function ContentPlan(p){
   </section>
 }
 
-function Workflow({rows,moveStage,canEdit}){return <div className="kanban">{WORKFLOW_STAGES.map(([value,label])=><div className="lane" key={value}><div className="lane-head"><b>{label}</b><span>{rows.filter(r=>r.status===value).length}</span></div>{rows.filter(r=>r.status===value).map(r=><article key={r.id}><small>{prettyBrand(r.brand)} · {r.platform||'No platform'}</small><h3>{r.title}</h3><p>{r.pic_name||'No PIC'} · {r.publish_date||'No date'}</p>{canEdit?<select value={r.status} onChange={e=>moveStage(r.id,e.target.value)}>{WORKFLOW_STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:<span className="status-pill">{label}</span>}</article>)}</div>)}</div>}
+function MonthPeriodBar({rows,value,onChange,label='Period'}){
+  const months=[...new Set(rows.map(r=>r.publish_date?.slice(0,7)).filter(Boolean))]
+    .sort((a,b)=>b.localeCompare(a))
+  if(!months.includes(currentMonthKey()))months.unshift(currentMonthKey())
+  return <div className="period-bar">
+    <div><small>{label}</small><b>{formatMonthKey(value)}</b></div>
+    <select value={value} onChange={e=>onChange(e.target.value)}>
+      <option value="All">All Months</option>
+      {months.map(m=><option key={m} value={m}>{formatMonthKey(m)}</option>)}
+    </select>
+  </div>
+}
+
+function Workflow({rows,moveStage,canEdit}){
+  const [month,setMonth]=useState(currentMonthKey)
+  const monthRows=month==='All'?rows:rows.filter(r=>r.publish_date?.slice(0,7)===month)
+  return <>
+    <MonthPeriodBar rows={rows} value={month} onChange={setMonth} label="Workflow period"/>
+    <div className="kanban">{WORKFLOW_STAGES.map(([value,label])=><div className="lane" key={value}><div className="lane-head"><b>{label}</b><span>{monthRows.filter(r=>r.status===value).length}</span></div>{monthRows.filter(r=>r.status===value).map(r=><article key={r.id}><small>{prettyBrand(r.brand)} · {r.platform||'No platform'}</small><h3>{r.title}</h3><p>{r.pic_name||'No PIC'} · {r.publish_date||'No date'}</p>{canEdit?<select value={r.status} onChange={e=>moveStage(r.id,e.target.value)}>{WORKFLOW_STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:<span className="status-pill">{label}</span>}</article>)}</div>)}</div>
+  </>
+}
+
 
 function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdit}){
-  const published=rows.filter(r=>r.status==='published')
+  const [month,setMonth]=useState(currentMonthKey)
+  const monthRows=month==='All'?rows:rows.filter(r=>r.publish_date?.slice(0,7)===month)
+  const published=monthRows.filter(r=>r.status==='published')
   const linked=published.filter(r=>r.instagram_url||r.tiktok_url).length
   const synced=published.filter(r=>['synced','partial'].includes(r.performance_sync_status)).length
   const statusLabel=s=>({
@@ -500,49 +534,53 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
     waiting_data:'Waiting Source',manual:'Manual',error:'Sync Error',ready:'Ready',waiting_link:'Waiting Link',not_published:'Not Published'
   }[s]||'Waiting Link')
 
-  return <section className="panel performance-panel">
-    <div className="performance-hero">
-      <div>
-        <div className="eyebrow">AUTO PERFORMANCE TRACKER</div>
-        <h2>Published content automatically enters Performance</h2>
-        <p>Paste Instagram and/or TikTok post links. Content OS matches the URL against the connected Windsor.ai feed and fills performance automatically.</p>
+  return <>
+    <MonthPeriodBar rows={rows} value={month} onChange={setMonth} label="Performance period"/>
+    <section className="panel performance-panel">
+      <div className="performance-hero">
+        <div>
+          <div className="eyebrow">AUTO PERFORMANCE TRACKER</div>
+          <h2>Published content · {formatMonthKey(month)}</h2>
+          <p>Paste Instagram and/or TikTok post links. Content OS matches the URL against the connected Windsor.ai feed and fills performance automatically.</p>
+        </div>
+        <button className="secondary" onClick={()=>onSyncAll(published)}><Zap size={16}/>Sync This Period</button>
       </div>
-      <button className="secondary" onClick={onSyncAll}><Zap size={16}/>Sync All Linked</button>
-    </div>
-    <div className="performance-summary">
-      <div><small>Published</small><b>{published.length}</b></div>
-      <div><small>With Social Link</small><b>{linked}</b></div>
-      <div><small>Auto Synced</small><b>{synced}</b></div>
-      <div><small>Waiting Link</small><b>{published.length-linked}</b></div>
-    </div>
-    <div className="social-api-note windsor-ready"><CheckCircle2 size={16}/><div><b>Windsor.ai connected</b><span>Instagram Insights dan TikTok Organic photobebaz.id sudah menjadi source utama. Views, reach, likes, comments, shares, saves/favorites, dan profile activity akan diperbarui dari feed Windsor.</span></div></div>
-    <div className="table-wrap"><table><thead><tr>
-      <th>Content</th><th>Instagram</th><th>TikTok</th><th>Sync</th>
-      <th>Views</th><th>Reach</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Saves</th>
-      <th>ER</th><th>Transactions</th><th>Revenue</th><th>Actions</th>
-    </tr></thead><tbody>{published.map(r=>{
-      const eng=Number(r.likes||0)+Number(r.comments||0)+Number(r.shares||0)+Number(r.saves||0)
-      const ig=r.social_platforms?.instagram
-      const tt=r.social_platforms?.tiktok
-      return <tr key={r.id}>
-        <td className="title-cell"><b>{r.title}</b><small>{r.content_code} · {r.platform||'-'}</small></td>
-        <td><SocialPlatformCell platform="IG" url={r.instagram_url} metric={ig}/></td>
-        <td><SocialPlatformCell platform="TT" url={r.tiktok_url} metric={tt}/></td>
-        <td><div className={`sync-status sync-${r.performance_sync_status||'waiting_link'}`}>
-          {['synced','partial'].includes(r.performance_sync_status)?<CheckCircle2 size={13}/>:<AlertCircle size={13}/>}
-          <div><b>{statusLabel(r.performance_sync_status)}</b><small>{r.performance_sync_error|| (r.last_performance_sync_at?new Date(r.last_performance_sync_at).toLocaleString('id-ID'):'Never synced')}</small></div>
-        </div></td>
-        <td>{num(r.views)}</td><td>{num(r.reach)}</td><td>{num(r.likes)}</td><td>{num(r.comments)}</td><td>{num(r.shares)}</td><td>{num(r.saves)}</td>
-        <td>{pct(rate(eng,r.reach||r.views))}</td><td>{num(r.transactions)}</td><td>{money(r.revenue)}</td>
-        <td><div className="performance-actions">
-          {canEdit&&<button className="mini-btn" onClick={()=>onEditLinks(r)}><Link2 size={13}/>Links</button>}
-          {canEdit&&(r.instagram_url||r.tiktok_url)&&<button className="mini-btn" disabled={syncingIds[r.id]} onClick={()=>onSync(r.id)}><RefreshCw size={13} className={syncingIds[r.id]?'spin':''}/>{syncingIds[r.id]?'Syncing':'Sync'}</button>}
-          {canEdit&&<button className="mini-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button>}
-        </div></td>
-      </tr>
-    })}</tbody></table></div>
-  </section>
+      <div className="performance-summary">
+        <div><small>Published</small><b>{published.length}</b></div>
+        <div><small>With Social Link</small><b>{linked}</b></div>
+        <div><small>Auto Synced</small><b>{synced}</b></div>
+        <div><small>Waiting Link</small><b>{published.length-linked}</b></div>
+      </div>
+      <div className="social-api-note windsor-ready"><CheckCircle2 size={16}/><div><b>Windsor.ai connected</b><span>Instagram Insights dan TikTok Organic photobebaz.id sudah menjadi source utama. Views, reach, likes, comments, shares, saves/favorites, dan profile activity akan diperbarui dari feed Windsor.</span></div></div>
+      <div className="table-wrap"><table><thead><tr>
+        <th>Content</th><th>Instagram</th><th>TikTok</th><th>Sync</th>
+        <th>Views</th><th>Reach</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Saves</th>
+        <th>ER</th><th>Transactions</th><th>Revenue</th><th>Actions</th>
+      </tr></thead><tbody>{published.map(r=>{
+        const eng=Number(r.likes||0)+Number(r.comments||0)+Number(r.shares||0)+Number(r.saves||0)
+        const ig=r.social_platforms?.instagram
+        const tt=r.social_platforms?.tiktok
+        return <tr key={r.id}>
+          <td className="title-cell"><b>{r.title}</b><small>{r.content_code} · {r.platform||'-'} · {r.publish_date||'-'}</small></td>
+          <td><SocialPlatformCell platform="IG" url={r.instagram_url} metric={ig}/></td>
+          <td><SocialPlatformCell platform="TT" url={r.tiktok_url} metric={tt}/></td>
+          <td><div className={`sync-status sync-${r.performance_sync_status||'waiting_link'}`}>
+            {['synced','partial'].includes(r.performance_sync_status)?<CheckCircle2 size={13}/>:<AlertCircle size={13}/>}
+            <div><b>{statusLabel(r.performance_sync_status)}</b><small>{r.performance_sync_error|| (r.last_performance_sync_at?new Date(r.last_performance_sync_at).toLocaleString('id-ID'):'Never synced')}</small></div>
+          </div></td>
+          <td>{num(r.views)}</td><td>{num(r.reach)}</td><td>{num(r.likes)}</td><td>{num(r.comments)}</td><td>{num(r.shares)}</td><td>{num(r.saves)}</td>
+          <td>{pct(rate(eng,r.reach||r.views))}</td><td>{num(r.transactions)}</td><td>{money(r.revenue)}</td>
+          <td><div className="performance-actions">
+            {canEdit&&<button className="mini-btn" onClick={()=>onEditLinks(r)}><Link2 size={13}/>Links</button>}
+            {canEdit&&(r.instagram_url||r.tiktok_url)&&<button className="mini-btn" disabled={syncingIds[r.id]} onClick={()=>onSync(r.id)}><RefreshCw size={13} className={syncingIds[r.id]?'spin':''}/>{syncingIds[r.id]?'Syncing':'Sync'}</button>}
+            {canEdit&&<button className="mini-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button>}
+          </div></td>
+        </tr>
+      })}</tbody></table></div>
+    </section>
+  </>
 }
+
 
 function SocialPlatformCell({platform,url,metric}){
   if(!url)return <span className="social-empty">No link</span>
@@ -553,11 +591,18 @@ function SocialPlatformCell({platform,url,metric}){
 }
 
 function Insights({rows}){
-  const by=key=>Object.entries(rows.reduce((a,r)=>{const k=r[key]||'Unclassified';if(!a[k])a[k]={count:0,views:0,shares:0,revenue:0};a[k].count++;a[k].views+=Number(r.views||0);a[k].shares+=Number(r.shares||0);a[k].revenue+=Number(r.revenue||0);return a},{})).sort((a,b)=>b[1].views-a[1].views||b[1].count-a[1].count)
-  const top=[...rows].filter(r=>Number(r.views||0)>0).sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,8)
-  return <><div className="three-col">{[['Content Pillar','content_pillar'],['Platform','platform'],['Post Type','post_type']].map(([title,key])=><section className="panel" key={key}><h2>{title}</h2>{by(key).map(([name,v])=><div className="insight-row" key={name}><div><b>{name}</b><small>{v.count} content</small></div><div><b>{num(v.views)} views</b><small>{num(v.shares)} shares · {money(v.revenue)}</small></div></div>)}</section>)}</div>
-    <section className="panel top-panel"><div className="panel-head"><h2>Top-performing content</h2><span>{top.length? 'Based on recorded views':'No performance data recorded yet'}</span></div>{top.length?top.map((r,i)=><div className="top-row" key={r.id}><b>#{i+1}</b><div><strong>{r.title}</strong><small>{r.content_code} · {r.platform}</small></div><div><strong>{num(r.views)} views</strong><small>{num(r.shares)} shares · {money(r.revenue)}</small></div></div>):<div className="empty-state">Performance is intentionally blank until the team enters real metrics.</div>}</section></>
+  const [month,setMonth]=useState(currentMonthKey)
+  const monthRows=month==='All'?rows:rows.filter(r=>r.publish_date?.slice(0,7)===month)
+  const by=key=>Object.entries(monthRows.reduce((a,r)=>{const k=r[key]||'Unclassified';if(!a[k])a[k]={count:0,views:0,shares:0,revenue:0};a[k].count++;a[k].views+=Number(r.views||0);a[k].shares+=Number(r.shares||0);a[k].revenue+=Number(r.revenue||0);return a},{})).sort((a,b)=>b[1].views-a[1].views||b[1].count-a[1].count)
+  const top=[...monthRows].filter(r=>Number(r.views||0)>0).sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,8)
+  return <>
+    <MonthPeriodBar rows={rows} value={month} onChange={setMonth} label="Insights period"/>
+    <div className="insights-period-summary"><b>{formatMonthKey(month)}</b><span>{monthRows.length} content analyzed</span></div>
+    <div className="three-col">{[['Content Pillar','content_pillar'],['Platform','platform'],['Post Type','post_type']].map(([title,key])=><section className="panel" key={key}><h2>{title}</h2>{by(key).map(([name,v])=><div className="insight-row" key={name}><div><b>{name}</b><small>{v.count} content</small></div><div><b>{num(v.views)} views</b><small>{num(v.shares)} shares · {money(v.revenue)}</small></div></div>)}</section>)}</div>
+    <section className="panel top-panel"><div className="panel-head"><div><h2>Top-performing content</h2><small className="pipeline-month">{formatMonthKey(month)}</small></div><span>{top.length? 'Based on recorded views':'No performance data recorded yet'}</span></div>{top.length?top.map((r,i)=><div className="top-row" key={r.id}><b>#{i+1}</b><div><strong>{r.title}</strong><small>{r.content_code} · {r.platform} · {r.publish_date||'-'}</small></div><div><strong>{num(r.views)} views</strong><small>{num(r.shares)} shares · {money(r.revenue)}</small></div></div>):<div className="empty-state">No performance data recorded for {formatMonthKey(month)}.</div>}</section>
+  </>
 }
+
 
 function SocialConnections({connections,loading,onRefresh}){
   const getConnection=platform=>connections.find(x=>x.platform===platform)||{platform,status:'not_connected'}
