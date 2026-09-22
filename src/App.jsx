@@ -169,19 +169,18 @@ function App(){
 
   async function syncSocialPerformance(contentId,{quiet=false}={}){
     setSyncingIds(x=>({...x,[contentId]:true}))
-    const {data,error}=await supabase.functions.invoke('sync-social-performance',{body:{content_id:contentId}})
+    const {data,error}=await supabase.rpc('sync_windsor_content',{p_content_id:contentId})
     setSyncingIds(x=>({...x,[contentId]:false}))
     if(error){
       if(!quiet)setNotice(`Social sync error: ${error.message}`)
       return {ok:false,error}
     }
     if(!quiet){
-      if(data?.status==='synced') setNotice('Social performance synced.')
-      else if(data?.status==='partial') setNotice('Sebagian social performance berhasil disinkronkan.')
-      else if(data?.status==='connection_required') setNotice('Windsor source belum tersedia. Cek Social Connections.')
+      if(data?.status==='synced') setNotice('Social performance synced from Windsor.')
+      else if(data?.status==='partial') setNotice('Sebagian link berhasil ditemukan di Windsor. Link lainnya masih menunggu data.')
       else if(data?.status==='waiting_link') setNotice('Tambahkan Instagram atau TikTok link terlebih dahulu.')
-      else if(data?.status==='waiting_data') setNotice('Link tersimpan. Post belum muncul di cache Windsor dan akan dicoba lagi pada refresh berikutnya.')
-      else if(data?.status==='error') setNotice('Link tersimpan, tetapi post belum bisa dicocokkan dengan data Windsor.')
+      else if(data?.status==='waiting_data') setNotice('Link tersimpan, tetapi post belum ditemukan di Windsor akun photobebaz.id. Pastikan link berasal dari akun yang terhubung; sistem akan mencoba lagi saat cache refresh.')
+      else if(data?.status==='not_published') setNotice('Performance hanya disinkronkan untuk content berstatus Published.')
     }
     await loadAll()
     return {ok:true,data}
