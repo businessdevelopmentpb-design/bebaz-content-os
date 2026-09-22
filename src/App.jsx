@@ -169,17 +169,29 @@ function App(){
 
   async function syncSocialPerformance(contentId,{quiet=false}={}){
     setSyncingIds(x=>({...x,[contentId]:true}))
-    const {data,error}=await supabase.rpc('sync_windsor_content',{p_content_id:contentId})
+    let data=null
+    let error=null
+
+    const direct=await supabase.functions.invoke('sync-social-performance',{body:{content_id:contentId}})
+    if(!direct.error){
+      data=direct.data
+    }else{
+      const fallback=await supabase.rpc('sync_windsor_content',{p_content_id:contentId})
+      data=fallback.data
+      error=fallback.error
+    }
+
     setSyncingIds(x=>({...x,[contentId]:false}))
     if(error){
       if(!quiet)setNotice(`Social sync error: ${error.message}`)
       return {ok:false,error}
     }
     if(!quiet){
-      if(data?.status==='synced') setNotice('Social performance synced from Windsor.')
-      else if(data?.status==='partial') setNotice('Sebagian link berhasil ditemukan di Windsor. Link lainnya masih menunggu data.')
+      if(data?.status==='synced') setNotice('Social performance synced.')
+      else if(data?.status==='partial') setNotice('Sebagian link berhasil disinkronkan. Link lainnya masih menunggu data.')
       else if(data?.status==='waiting_link') setNotice('Tambahkan Instagram atau TikTok link terlebih dahulu.')
-      else if(data?.status==='waiting_data') setNotice('Link tersimpan, tetapi post belum ditemukan di Windsor akun photobebaz.id. Pastikan link berasal dari akun yang terhubung; sistem akan mencoba lagi saat cache refresh.')
+      else if(data?.status==='waiting_data') setNotice('Link tersimpan, tetapi post belum ditemukan di source saat ini. Sistem akan mencoba lagi pada refresh berikutnya.')
+      else if(data?.status==='connection_required') setNotice('Direct API belum di-connect dan fallback source tidak tersedia.')
       else if(data?.status==='not_published') setNotice('Performance hanya disinkronkan untuk content berstatus Published.')
     }
     await loadAll()
@@ -477,40 +489,40 @@ function Insights({rows}){
 function SocialConnections({connections,loading,onRefresh}){
   const getConnection=platform=>connections.find(x=>x.platform===platform)||{platform,status:'not_connected'}
   const cards=[
-    {platform:'instagram',name:'Instagram Insights',Icon:Instagram,description:'Post & Reel performance from the connected PhotoBebaz Instagram account.'},
-    {platform:'tiktok',name:'TikTok Organic',Icon:Music2,description:'Video performance from the connected PhotoBebaz TikTok account.'}
+    {platform:'instagram',name:'Instagram',Icon:Instagram,description:'Performance Instagram untuk reporting internal.'},
+    {platform:'tiktok',name:'TikTok',Icon:Music2,description:'Performance TikTok untuk reporting internal.'}
   ]
   const formatDate=value=>value?new Date(value).toLocaleString('id-ID'):'—'
   return <div className="social-connections-page">
     <section className="social-connect-hero">
-      <div><div className="eyebrow">WINDSOR.AI SOCIAL DATA</div><h2>Social performance source is connected</h2><p>Instagram Insights dan TikTok Organic photobebaz.id masuk melalui Windsor.ai. Tim tidak perlu membuat Meta/TikTok developer app untuk workflow Content OS ini.</p></div>
+      <div><div className="eyebrow">FREE-FIRST SOCIAL REPORTING</div><h2>Rp0 recurring-cost architecture</h2><p>Urutan provider sekarang: Direct API resmi (gratis) → Windsor trial sebagai fallback sementara → manual performance fallback. Tidak ada fitur Content OS yang mewajibkan subscription Windsor.</p></div>
       <button className="secondary" onClick={onRefresh} disabled={loading}><RefreshCw size={16} className={loading?'spin':''}/>Refresh Status</button>
     </section>
     <div className="social-connection-grid">{cards.map(({platform,name,Icon,description})=>{
       const conn=getConnection(platform)
       const isConnected=conn.status==='connected'
       return <section className={`social-connection-card ${isConnected?'connected':''}`} key={platform}>
-        <div className="social-card-head"><div className={`social-logo social-${platform}`}><Icon size={24}/></div><div><h3>{name}</h3><span className={`connection-pill connection-${conn.status||'not_connected'}`}>{isConnected?'Connected via Windsor':'Source Error'}</span></div></div>
+        <div className="social-card-head"><div className={`social-logo social-${platform}`}><Icon size={24}/></div><div><h3>{name}</h3><span className={`connection-pill connection-${conn.status||'not_connected'}`}>{isConnected?'Temporary Windsor bridge':'Fallback unavailable'}</span></div></div>
         <p>{description}</p>
         <div className="connection-details">
-          <div><small>Connected account</small><b>{conn.account_name||'—'}</b></div>
-          <div><small>Windsor account ID</small><b>{conn.account_id||'—'}</b></div>
-          <div><small>Data source</small><b>Windsor.ai</b></div>
+          <div><small>Current account</small><b>{conn.account_name||'—'}</b></div>
+          <div><small>Current source</small><b>{isConnected?'Windsor trial':'Manual fallback'}</b></div>
+          <div><small>Target source</small><b>Official Direct API</b></div>
           <div><small>Cache refreshed</small><b>{formatDate(conn.last_refreshed_at)}</b></div>
         </div>
         {conn.last_error&&<div className="connection-error"><AlertCircle size={15}/><span>{conn.last_error}</span></div>}
-        <div className="scope-box"><ShieldCheck size={15}/><div><small>Connection status</small><b>{isConnected?'Authorized in Windsor.ai · Auto performance enabled':'Check Windsor connector authorization'}</b></div></div>
+        <div className="scope-box"><ShieldCheck size={15}/><div><small>Free mode</small><b>Direct API akan menjadi primary source setelah one-time developer authorization selesai. Windsor tidak diperlukan untuk jangka panjang.</b></div></div>
       </section>
     })}</div>
     <section className="panel connection-setup">
-      <div className="panel-head"><div><h2>Automatic data flow</h2><span>No duplicate performance entry needed.</span></div></div>
+      <div className="panel-head"><div><h2>Free-mode architecture</h2><span>Dirancang supaya workflow tim tidak berubah saat Windsor dilepas.</span></div></div>
       <div className="setup-flow">
-        <div><b>1</b><p><strong>Publish content</strong><span>Content with Published status automatically appears in Performance.</span></p></div>
-        <div><b>2</b><p><strong>Paste post link</strong><span>Team adds the Instagram and/or TikTok URL to the content.</span></p></div>
-        <div><b>3</b><p><strong>Match with Windsor</strong><span>Content OS matches the URL or TikTok video ID against the Windsor cache.</span></p></div>
-        <div><b>4</b><p><strong>Performance updates</strong><span>Views, reach, likes, comments, shares and saves/favorites flow into Performance & Insights.</span></p></div>
+        <div><b>1</b><p><strong>Supabase Free</strong><span>Database, Auth, RPC, performance snapshots dan Edge Functions tetap di free tier selama masih dalam quota.</span></p></div>
+        <div><b>2</b><p><strong>Official Social APIs</strong><span>Instagram/TikTok direct API menjadi target source tanpa subscription middleware.</span></p></div>
+        <div><b>3</b><p><strong>Windsor = temporary bridge</strong><span>Dipakai selama trial masih aktif, tetapi bukan dependency wajib.</span></p></div>
+        <div><b>4</b><p><strong>Manual fallback</strong><span>Kalau source otomatis sedang unavailable, business/performance metrics masih dapat dicatat tanpa menghentikan reporting.</span></p></div>
       </div>
-      <div className="security-note"><ShieldCheck size={17}/><p><b>Credential-safe.</b> Social account credentials remain inside Windsor.ai. Bebaz Content OS only stores performance snapshots and source metadata in Supabase.</p></div>
+      <div className="security-note"><ShieldCheck size={17}/><p><b>No paid lock-in.</b> Content Plan, Calendar, Workflow, Performance, Insights, PIC List dan seluruh historical data tetap berada di sistem kita sendiri.</p></div>
     </section>
   </div>
 }
