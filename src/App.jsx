@@ -105,7 +105,7 @@ function App(){
     const [t,c,m,s]=await Promise.all([
       supabase.from('team_members').select('*').eq('is_active',true).order('name'),
       supabase.from('contents').select('*').order('publish_date',{ascending:false,nullsFirst:false}),
-      supabase.from('content_metrics').select('*').order('measured_at',{ascending:false}),
+      supabase.from('content_metrics').select('*').order('measured_at',{ascending:false}).order('created_at',{ascending:false}),
       supabase.from('social_post_metrics').select('*').order('synced_at',{ascending:false,nullsFirst:false})
     ])
     if(t.error||c.error||m.error||s.error){setNotice(`Load error: ${t.error?.message||c.error?.message||m.error?.message||s.error?.message}`);setLoading(false);return}
@@ -200,7 +200,7 @@ function App(){
   }
   async function saveMetrics(contentId,data){
     const payload={...data,content_id:contentId,measured_at:new Date().toISOString().slice(0,10),created_by:session.user.id,source:'manual'}
-    const {error}=await supabase.from('content_metrics').upsert(payload,{onConflict:'content_id,measured_at'})
+    const {data:saved,error}=await supabase.from('content_metrics').upsert(payload,{onConflict:'content_id,measured_at'}).select().single()
     if(error) return setNotice(error.message)
     const {error:flagError}=await supabase.from('contents').update({
       performance_manual_override:true,
@@ -208,7 +208,17 @@ function App(){
       performance_sync_error:null
     }).eq('id',contentId)
     if(flagError)return setNotice(flagError.message)
-    setMetricContent(null);setNotice('Performance updated manually. Auto overwrite paused until you press Sync.');loadAll()
+
+    setMetrics(prev=>({...prev,[contentId]:saved||payload}))
+    setRows(prev=>prev.map(row=>row.id===contentId?{
+      ...row,
+      performance_manual_override:true,
+      performance_sync_status:'manual',
+      performance_sync_error:null
+    }:row))
+    setMetricContent(null)
+    setNotice('Performance updated manually. Auto overwrite paused until you press Sync.')
+    await loadAll()
   }
 
   async function syncSocialPerformance(contentId,{quiet=false}={}){
@@ -364,7 +374,7 @@ function App(){
     </main>
     {showForm&&<ContentForm teamMembers={teamMembers} onClose={()=>setShowForm(false)} onSave={saveContent}/>}
     {editContent&&<ContentForm content={editContent} teamMembers={teamMembers} onClose={()=>setEditContent(null)} onSave={payload=>updateContent(editContent.id,payload)}/>}
-    {metricContent&&<MetricsModal content={metricContent} metrics={metrics[metricContent.id]||EMPTY_METRICS} onClose={()=>setMetricContent(null)} onSave={saveMetrics}/>}
+    {metricContent&&<MetricsModal content={metricContent} metrics={metricContent} onClose={()=>setMetricContent(null)} onSave={saveMetrics}/>} 
     {socialContent&&<SocialLinksModal content={socialContent} onClose={()=>setSocialContent(null)} onSave={saveSocialLinks}/>}
     {detailContent&&<ContentDetail content={detailContent} onClose={()=>setDetailContent(null)} onOpenPlan={()=>{
       setQuery(detailContent.content_code||detailContent.title||'')
