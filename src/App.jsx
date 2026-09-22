@@ -178,9 +178,10 @@ function App(){
     if(!quiet){
       if(data?.status==='synced') setNotice('Social performance synced.')
       else if(data?.status==='partial') setNotice('Sebagian social performance berhasil disinkronkan.')
-      else if(data?.status==='connection_required') setNotice('Link tersimpan. Hubungkan Instagram/TikTok API satu kali agar metrics bisa ditarik otomatis.')
+      else if(data?.status==='connection_required') setNotice('Windsor source belum tersedia. Cek Social Connections.')
       else if(data?.status==='waiting_link') setNotice('Tambahkan Instagram atau TikTok link terlebih dahulu.')
-      else if(data?.status==='error') setNotice('Link tersimpan, tetapi post belum bisa dibaca dari API social.')
+      else if(data?.status==='waiting_data') setNotice('Link tersimpan. Post belum muncul di cache Windsor dan akan dicoba lagi pada refresh berikutnya.')
+      else if(data?.status==='error') setNotice('Link tersimpan, tetapi post belum bisa dicocokkan dengan data Windsor.')
     }
     await loadAll()
     return {ok:true,data}
@@ -212,35 +213,25 @@ function App(){
   async function loadSocialConnections(){
     if(!session)return
     setSocialLoading(true)
-    const {data,error}=await supabase.functions.invoke('social-oauth',{body:{action:'status'}})
+    const {data,error}=await supabase.from('social_sync_sources').select('*').eq('source','windsor').maybeSingle()
     setSocialLoading(false)
     if(error)return setNotice(`Social connection error: ${error.message}`)
-    setSocialConnections(data?.connections||[])
-    setSocialConfigured(data?.configured||{instagram:false,tiktok:false})
-    setSocialCallback(data?.callback_url||'')
+    const connected=data?.status==='connected'
+    setSocialConnections([
+      {platform:'instagram',status:connected?'connected':'error',account_id:data?.instagram_account_id||null,account_name:data?.instagram_account_name||null,last_refreshed_at:data?.last_synced_at||null,last_error:data?.last_error||null,connection_source:'windsor'},
+      {platform:'tiktok',status:connected?'connected':'error',account_id:data?.tiktok_account_id||null,account_name:data?.tiktok_account_name||null,last_refreshed_at:data?.last_synced_at||null,last_error:data?.last_error||null,connection_source:'windsor'}
+    ])
+    setSocialConfigured({instagram:connected,tiktok:connected})
+    setSocialCallback('')
   }
 
-  async function connectSocial(platform){
-    setSocialLoading(true)
-    const {data,error}=await supabase.functions.invoke('social-oauth',{body:{action:'start',platform}})
-    setSocialLoading(false)
-    if(error){
-      setNotice(`Connect ${platform} belum bisa dimulai. Developer credentials perlu diset lebih dulu.`)
-      await loadSocialConnections()
-      return
-    }
-    if(data?.url)window.location.href=data.url
+  async function connectSocial(){
+    setNotice('Instagram dan TikTok dikelola melalui Windsor.ai dan sudah terhubung.')
+    await loadSocialConnections()
   }
 
-  async function disconnectSocial(platform){
-    if(!window.confirm(`Disconnect ${platform}? Auto performance sync untuk platform ini akan berhenti.`))return
-    setSocialLoading(true)
-    const {data,error}=await supabase.functions.invoke('social-oauth',{body:{action:'disconnect',platform}})
-    setSocialLoading(false)
-    if(error)return setNotice(error.message)
-    setSocialConnections(data?.connections||[])
-    setSocialConfigured(data?.configured||socialConfigured)
-    setNotice(`${platform==='instagram'?'Instagram':'TikTok'} disconnected.`)
+  async function disconnectSocial(){
+    setNotice('Koneksi social dikelola melalui Windsor.ai. Disconnect dilakukan dari Windsor jika memang diperlukan.')
   }
 
   function exportCsv(){
@@ -421,8 +412,8 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
   const linked=published.filter(r=>r.instagram_url||r.tiktok_url).length
   const synced=published.filter(r=>['synced','partial'].includes(r.performance_sync_status)).length
   const statusLabel=s=>({
-    synced:'Synced',partial:'Partial',syncing:'Syncing',connection_required:'Connect API',
-    error:'Sync Error',ready:'Ready',waiting_link:'Waiting Link',not_published:'Not Published'
+    synced:'Synced',partial:'Partial',syncing:'Syncing',connection_required:'Source Offline',
+    waiting_data:'Waiting Windsor',error:'Sync Error',ready:'Ready',waiting_link:'Waiting Link',not_published:'Not Published'
   }[s]||'Waiting Link')
 
   return <section className="panel performance-panel">
@@ -430,17 +421,17 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
       <div>
         <div className="eyebrow">AUTO PERFORMANCE TRACKER</div>
         <h2>Published content automatically enters Performance</h2>
-        <p>Paste Instagram and/or TikTok post links. Content OS will sync social metrics through the official platform APIs after the social accounts are connected once.</p>
+        <p>Paste Instagram and/or TikTok post links. Content OS matches the URL against the connected Windsor.ai feed and fills performance automatically.</p>
       </div>
       <button className="secondary" onClick={onSyncAll}><Zap size={16}/>Sync All Linked</button>
     </div>
     <div className="performance-summary">
       <div><small>Published</small><b>{published.length}</b></div>
       <div><small>With Social Link</small><b>{linked}</b></div>
-      <div><small>API Synced</small><b>{synced}</b></div>
+      <div><small>Auto Synced</small><b>{synced}</b></div>
       <div><small>Waiting Link</small><b>{published.length-linked}</b></div>
     </div>
-    <div className="social-api-note"><AlertCircle size={16}/><div><b>Official API connection required once</b><span>Instagram must be a Professional account. TikTok metrics are available only for videos belonging to the TikTok account that authorized the app. TikTok does not expose Reach or Saves through Display API, so those fields remain 0 for TikTok-only posts.</span></div></div>
+    <div className="social-api-note windsor-ready"><CheckCircle2 size={16}/><div><b>Windsor.ai connected</b><span>Instagram Insights dan TikTok Organic photobebaz.id sudah menjadi source utama. Views, reach, likes, comments, shares, saves/favorites, dan profile activity akan diperbarui dari feed Windsor.</span></div></div>
     <div className="table-wrap"><table><thead><tr>
       <th>Content</th><th>Instagram</th><th>TikTok</th><th>Sync</th>
       <th>Views</th><th>Reach</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Saves</th>
@@ -484,48 +475,43 @@ function Insights({rows}){
     <section className="panel top-panel"><div className="panel-head"><h2>Top-performing content</h2><span>{top.length? 'Based on recorded views':'No performance data recorded yet'}</span></div>{top.length?top.map((r,i)=><div className="top-row" key={r.id}><b>#{i+1}</b><div><strong>{r.title}</strong><small>{r.content_code} · {r.platform}</small></div><div><strong>{num(r.views)} views</strong><small>{num(r.shares)} shares · {money(r.revenue)}</small></div></div>):<div className="empty-state">Performance is intentionally blank until the team enters real metrics.</div>}</section></>
 }
 
-function SocialConnections({connections,configured,callbackUrl,loading,onConnect,onDisconnect,onRefresh}){
+function SocialConnections({connections,loading,onRefresh}){
   const getConnection=platform=>connections.find(x=>x.platform===platform)||{platform,status:'not_connected'}
   const cards=[
-    {platform:'instagram',name:'Instagram',Icon:Instagram,description:'Connect PhotoBebaz Instagram Professional account to sync Reel/Post performance.',scopes:'instagram_business_basic + instagram_business_manage_insights'},
-    {platform:'tiktok',name:'TikTok',Icon:Music2,description:'Connect PhotoBebaz TikTok account to sync public video performance.',scopes:'user.info.basic + video.list'}
+    {platform:'instagram',name:'Instagram Insights',Icon:Instagram,description:'Post & Reel performance from the connected PhotoBebaz Instagram account.'},
+    {platform:'tiktok',name:'TikTok Organic',Icon:Music2,description:'Video performance from the connected PhotoBebaz TikTok account.'}
   ]
   const formatDate=value=>value?new Date(value).toLocaleString('id-ID'):'—'
   return <div className="social-connections-page">
     <section className="social-connect-hero">
-      <div><div className="eyebrow">OFFICIAL SOCIAL API</div><h2>Connect social accounts once</h2><p>Setelah connected, tim cukup paste link Instagram/TikTok pada Published Content. Access token dan refresh token disimpan server-side di Supabase, bukan di browser.</p></div>
+      <div><div className="eyebrow">WINDSOR.AI SOCIAL DATA</div><h2>Social performance source is connected</h2><p>Instagram Insights dan TikTok Organic photobebaz.id masuk melalui Windsor.ai. Tim tidak perlu membuat Meta/TikTok developer app untuk workflow Content OS ini.</p></div>
       <button className="secondary" onClick={onRefresh} disabled={loading}><RefreshCw size={16} className={loading?'spin':''}/>Refresh Status</button>
     </section>
-    <div className="social-connection-grid">{cards.map(({platform,name,Icon,description,scopes})=>{
+    <div className="social-connection-grid">{cards.map(({platform,name,Icon,description})=>{
       const conn=getConnection(platform)
       const isConnected=conn.status==='connected'
-      const isConfigured=Boolean(configured?.[platform])
       return <section className={`social-connection-card ${isConnected?'connected':''}`} key={platform}>
-        <div className="social-card-head"><div className={`social-logo social-${platform}`}><Icon size={24}/></div><div><h3>{name}</h3><span className={`connection-pill connection-${conn.status||'not_connected'}`}>{isConnected?'Connected':conn.status==='error'?'Connection Error':isConfigured?'Ready to Connect':'Needs App Credentials'}</span></div></div>
+        <div className="social-card-head"><div className={`social-logo social-${platform}`}><Icon size={24}/></div><div><h3>{name}</h3><span className={`connection-pill connection-${conn.status||'not_connected'}`}>{isConnected?'Connected via Windsor':'Source Error'}</span></div></div>
         <p>{description}</p>
         <div className="connection-details">
           <div><small>Connected account</small><b>{conn.account_name||'—'}</b></div>
-          <div><small>Account ID</small><b>{conn.account_id||'—'}</b></div>
-          <div><small>Token expires</small><b>{formatDate(conn.token_expires_at)}</b></div>
-          <div><small>Last refreshed</small><b>{formatDate(conn.last_refreshed_at)}</b></div>
+          <div><small>Windsor account ID</small><b>{conn.account_id||'—'}</b></div>
+          <div><small>Data source</small><b>Windsor.ai</b></div>
+          <div><small>Cache refreshed</small><b>{formatDate(conn.last_refreshed_at)}</b></div>
         </div>
         {conn.last_error&&<div className="connection-error"><AlertCircle size={15}/><span>{conn.last_error}</span></div>}
-        <div className="scope-box"><ShieldCheck size={15}/><div><small>Requested permissions</small><b>{scopes}</b></div></div>
-        <div className="connection-actions">
-          {isConnected?<><button className="secondary" onClick={()=>onConnect(platform)} disabled={!isConfigured||loading}>Reconnect</button><button className="danger-btn" onClick={()=>onDisconnect(platform)} disabled={loading}>Disconnect</button></>:
-          <button className="primary" onClick={()=>onConnect(platform)} disabled={!isConfigured||loading}>{isConfigured?<><PlugZap size={16}/>Connect {name}</>:<>Needs Developer Credentials</>}</button>}
-        </div>
+        <div className="scope-box"><ShieldCheck size={15}/><div><small>Connection status</small><b>{isConnected?'Authorized in Windsor.ai · Auto performance enabled':'Check Windsor connector authorization'}</b></div></div>
       </section>
     })}</div>
     <section className="panel connection-setup">
-      <div className="panel-head"><div><h2>One-time developer setup</h2><span>This is required before the Connect buttons become active.</span></div></div>
+      <div className="panel-head"><div><h2>Automatic data flow</h2><span>No duplicate performance entry needed.</span></div></div>
       <div className="setup-flow">
-        <div><b>1</b><p><strong>Create / configure Meta app</strong><span>Add Instagram API with Instagram Login and request Insights permissions.</span></p></div>
-        <div><b>2</b><p><strong>Create / configure TikTok app</strong><span>Add Login Kit + Display API and request user.info.basic + video.list.</span></p></div>
-        <div><b>3</b><p><strong>Register the same callback URL</strong><code>{callbackUrl||'Loading callback URL…'}</code></p></div>
-        <div><b>4</b><p><strong>Store credentials in Supabase Edge Function Secrets</strong><span>INSTAGRAM_CLIENT_ID, INSTAGRAM_CLIENT_SECRET, TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET.</span></p></div>
+        <div><b>1</b><p><strong>Publish content</strong><span>Content with Published status automatically appears in Performance.</span></p></div>
+        <div><b>2</b><p><strong>Paste post link</strong><span>Team adds the Instagram and/or TikTok URL to the content.</span></p></div>
+        <div><b>3</b><p><strong>Match with Windsor</strong><span>Content OS matches the URL or TikTok video ID against the Windsor cache.</span></p></div>
+        <div><b>4</b><p><strong>Performance updates</strong><span>Views, reach, likes, comments, shares and saves/favorites flow into Performance & Insights.</span></p></div>
       </div>
-      <div className="security-note"><ShieldCheck size={17}/><p><b>Secret-safe architecture.</b> Client secrets, access tokens and refresh tokens never enter GitHub or Vercel frontend code. The browser only sees connection status.</p></div>
+      <div className="security-note"><ShieldCheck size={17}/><p><b>Credential-safe.</b> Social account credentials remain inside Windsor.ai. Bebaz Content OS only stores performance snapshots and source metadata in Supabase.</p></div>
     </section>
   </div>
 }
