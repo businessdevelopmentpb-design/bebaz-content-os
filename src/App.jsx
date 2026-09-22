@@ -734,10 +734,32 @@ function SocialLinksModal({content,onClose,onSave}){
   </div>
 }
 
+function NumericInput({value,onChange,step='1',min='0'}){
+  return <input
+    type="number"
+    inputMode="numeric"
+    min={min}
+    step={step}
+    value={value}
+    onFocus={e=>{
+      if(Number(value)===0){
+        onChange('')
+        requestAnimationFrame(()=>e.target.select())
+      }
+    }}
+    onChange={e=>onChange(e.target.value===''?'':Number(e.target.value))}
+    onBlur={e=>{if(e.target.value==='')onChange(0)}}
+  />
+}
+
 function MetricsModal({content,metrics,onClose,onSave}){
   const fields=[['views','Views'],['reach','Reach'],['likes','Likes'],['comments','Comments'],['shares','Shares'],['saves','Saves'],['profile_visits','Profile Visits'],['link_clicks','Link Clicks'],['voucher_claims','Voucher Claims'],['transactions','Transactions'],['revenue','Revenue (IDR)']]
   const [f,setF]=useState(Object.fromEntries(fields.map(([k])=>[k,Number(metrics[k]||0)])))
-  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><form className="modal-card" onSubmit={e=>{e.preventDefault();onSave(content.id,f)}}><div className="modal-title"><div><div className="eyebrow">EDIT PERFORMANCE</div><h2>Edit Performance</h2><p>{content.content_code} · {content.title}</p><small className="manual-edit-note">Manual values are preserved until you press Sync again.</small></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div><div className="form-grid metrics-form">{fields.map(([k,l])=><label key={k}>{l}<input type="number" min="0" step={k==='revenue'?'1000':'1'} value={f[k]} onChange={e=>setF(x=>({...x,[k]:Number(e.target.value||0)}))}/></label>)}</div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Save Changes</button></div></form></div>
+  const submit=()=>{
+    const clean=Object.fromEntries(fields.map(([k])=>[k,Number(f[k]||0)]))
+    onSave(content.id,clean)
+  }
+  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><form className="modal-card" onSubmit={e=>{e.preventDefault();submit()}}><div className="modal-title"><div><div className="eyebrow">EDIT PERFORMANCE</div><h2>Edit Performance</h2><p>{content.content_code} · {content.title}</p><small className="manual-edit-note">Manual values are preserved until you press Sync again.</small></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div><div className="form-grid metrics-form">{fields.map(([k,l])=><label key={k}>{l}<NumericInput value={f[k]} step={k==='revenue'?'1000':'1'} onChange={value=>setF(x=>({...x,[k]:value}))}/></label>)}</div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Save Changes</button></div></form></div>
 }
 
 export default App
