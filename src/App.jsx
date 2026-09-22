@@ -399,18 +399,22 @@ function App(){
 }
 
 function Dashboard({rows,published,inProduction,onSchedule,totalViews,revenue,onOpenDetail}){
-  const needsReview=rows.filter(r=>['internal_review','revision'].includes(r.status)).length
+  const today=new Date()
+  const [calendarCursor,setCalendarCursor]=useState(()=>new Date(today.getFullYear(),today.getMonth(),1))
+  const monthKey=`${calendarCursor.getFullYear()}-${String(calendarCursor.getMonth()+1).padStart(2,'0')}`
+  const pipelineMonthName=calendarCursor.toLocaleDateString('en-US',{month:'long',year:'numeric'})
+  const monthRows=rows.filter(r=>r.publish_date?.slice(0,7)===monthKey)
+  const needsReview=monthRows.filter(r=>['internal_review','revision'].includes(r.status)).length
   const onTimeRate=rows.length?onSchedule/rows.length*100:0
   const cards=[['Total Planned',rows.length],['Published',published],['In Production',inProduction],['On-time Rate',pct(onTimeRate)],['Total Views',num(totalViews)],['Attributed Revenue',money(revenue)]]
   return <><section className="metrics-grid">{cards.map(([k,v])=><div className="metric" key={k}><span>{k}</span><strong>{v}</strong></div>)}</section>
-    <ContentCalendar rows={rows} onOpenDetail={onOpenDetail}/>
-    <section className="two-col"><div className="panel"><div className="panel-head"><h2>Current pipeline</h2><span>{needsReview} need review</span></div>{WORKFLOW_STAGES.map(([value,label])=>{const c=rows.filter(r=>r.status===value).length;return <div className="summary-line" key={value}><span>{label}</span><div><b>{c}</b><i style={{width:`${Math.min(100,c/Math.max(1,rows.length)*500)}%`}}/></div></div>})}</div>
+    <ContentCalendar rows={rows} onOpenDetail={onOpenDetail} cursor={calendarCursor} setCursor={setCalendarCursor}/>
+    <section className="two-col"><div className="panel"><div className="panel-head"><div><h2>Current pipeline</h2><small className="pipeline-month">{pipelineMonthName} · {monthRows.length} content</small></div><span>{needsReview} need review</span></div>{WORKFLOW_STAGES.map(([value,label])=>{const count=monthRows.filter(r=>r.status===value).length;return <div className="summary-line" key={value}><span>{label}</span><div><b>{count}</b><i style={{width:`${Math.min(100,count/Math.max(1,monthRows.length)*500)}%`}}/></div></div>})}</div>
     <div className="panel"><div className="panel-head"><h2>Head priorities</h2></div><div className="priority"><Sparkles/><div><b>Creative quality before volume</b><p>Challenge hook, storytelling, shareability and CTA before publishing.</p></div></div><div className="priority"><Users/><div><b>Clear ownership</b><p>Every content item should have one accountable PIC, deadline and next action.</p></div></div><div className="priority"><Gauge/><div><b>Close the learning loop</b><p>Published content is not done until performance and learnings are recorded.</p></div></div></div></section></>
 }
 
-function ContentCalendar({rows,onOpenDetail}){
+function ContentCalendar({rows,onOpenDetail,cursor,setCursor}){
   const today=new Date()
-  const [cursor,setCursor]=useState(()=>new Date(today.getFullYear(),today.getMonth(),1))
   const year=cursor.getFullYear()
   const month=cursor.getMonth()
   const monthKey=`${year}-${String(month+1).padStart(2,'0')}`
