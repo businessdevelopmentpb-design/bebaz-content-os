@@ -66,7 +66,7 @@ function AuthScreen({onSession}){
     setMsg('Akun shared sudah dibuat. Cek email bersama satu kali untuk konfirmasi, lalu sign in kembali.')
   }
   return <div className="login-shell"><form className="login-card" onSubmit={submit}>
-    <div className="brand-mark">B</div><h1>Bebaz Content OS</h1><p>Satu link bersama untuk planning, workflow, performance & learning Content Team.</p>
+    <div className="login-logo-wrap"><img src="/photobebaz-bd-superteam-logo.webp" alt="PhotoBebaz BD Superteam"/></div><h1>Bebaz Content OS</h1><p>Satu link bersama untuk planning, workflow, performance & learning Content Team.</p>
     <label>Shared email<input value={SHARED_EMAIL} type="email" readOnly/></label>
     <label>Password<input value={password} onChange={e=>setPassword(e.target.value)} type="password" minLength="6" required autoFocus/></label>
     <button className="primary wide" disabled={busy}>{busy?'Please wait…':'Sign in'}</button>
@@ -417,7 +417,7 @@ function App(){
   const nav=[['Dashboard',LayoutDashboard],['Content Plan',CalendarDays],['Workflow',Columns3],['Performance',Gauge],['Insights',BarChart3],['Social Connections',PlugZap],['PIC List',Users]]
 
   return <div className="app-shell">
-    <aside><div className="logo-wrap"><div className="brand-mark small">B</div><div><strong>Bebaz</strong><span>Content OS</span></div></div>
+    <aside><div className="logo-wrap superteam-logo-wrap"><img src="/photobebaz-bd-superteam-logo.webp" alt="PhotoBebaz BD Superteam"/></div>
       <nav>{nav.map(([n,I])=><button key={n} className={page===n?'active':''} onClick={()=>setPage(n)}><I size={18}/>{n}</button>)}</nav>
       <div className="side-bottom"><div className="user-card"><b>Bebaz Content Team</b><span>Shared login</span></div><button className="ghost" onClick={()=>supabase.auth.signOut()}><LogOut size={16}/>Sign out</button></div>
     </aside>
