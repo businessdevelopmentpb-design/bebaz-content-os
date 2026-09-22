@@ -64,3 +64,42 @@
 .detail-actions{padding:18px 24px;margin:0;background:#fafaf8;border-radius:0 0 18px 18px}
 @media(max-width:900px){.detail-layout{grid-template-columns:1fr}.detail-layout .detail-section:first-child{border-right:0}.detail-performance{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:600px){.detail-grid{grid-template-columns:1fr}.detail-performance{grid-template-columns:repeat(2,1fr)}.detail-hero h2{font-size:21px}}
+
+.performance-panel{padding:0;overflow:hidden}
+.performance-hero{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;padding:20px 20px 16px;border-bottom:1px solid var(--line)}
+.performance-hero h2{margin:4px 0 6px;font-size:22px}
+.performance-hero p{margin:0;color:var(--muted);font-size:12px;max-width:760px;line-height:1.55}
+.performance-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid var(--line);background:#fafaf8}
+.performance-summary>div{padding:14px 18px;border-right:1px solid var(--line)}
+.performance-summary>div:last-child{border-right:0}
+.performance-summary small{display:block;text-transform:uppercase;letter-spacing:.08em;font-size:9px;font-weight:900;color:#8a8a84}
+.performance-summary b{display:block;font-size:21px;margin-top:4px}
+.social-api-note{display:flex;gap:10px;align-items:flex-start;margin:14px 18px;background:#fff8dc;border:1px solid #f1dc8b;border-radius:11px;padding:11px 12px;color:#6e5200}
+.social-api-note svg{flex:none;margin-top:1px}
+.social-api-note b,.social-api-note span{display:block}
+.social-api-note b{font-size:11px}
+.social-api-note span{font-size:10px;line-height:1.45;margin-top:3px}
+.social-platform-cell{display:grid;gap:4px}
+.social-platform-cell a{display:inline-flex;align-items:center;gap:5px;font-weight:900;font-size:10px;color:#111;text-decoration:none}
+.social-platform-cell a:hover{color:var(--pink)}
+.social-platform-cell small,.social-empty{font-size:9px;color:#90908a}
+.sync-status{display:flex;gap:6px;align-items:flex-start;min-width:105px}
+.sync-status svg{flex:none;margin-top:2px}
+.sync-status b,.sync-status small{display:block}
+.sync-status b{font-size:10px}
+.sync-status small{font-size:8px;color:#8a8a84;margin-top:2px;white-space:normal}
+.sync-synced{color:#087333}.sync-partial{color:#8b5b00}.sync-error,.sync-connection_required{color:#a12620}.sync-ready,.sync-waiting_link{color:#666}
+.performance-actions{display:flex;gap:5px;flex-wrap:wrap;min-width:190px}
+.performance-actions .mini-btn{display:inline-flex;align-items:center;gap:4px}
+.performance-actions .mini-btn:disabled{opacity:.55;cursor:not-allowed}
+.spin{animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.social-links-modal{width:min(720px,calc(100vw - 36px))}
+.social-link-fields{display:grid;gap:13px}
+.social-link-fields label{display:grid;gap:6px;font-size:11px;font-weight:900}
+.social-link-fields input{border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+.field-error{color:#b42318!important;font-size:9px!important}
+.social-link-explain{display:flex;gap:10px;align-items:flex-start;background:#fff0f7;border:1px solid #ffc6e1;border-radius:10px;padding:11px 12px;margin-top:15px;color:#8e0048}
+.social-link-explain svg{flex:none}
+.social-link-explain p{margin:0;font-size:10px;line-height:1.5}
+@media(max-width:900px){.performance-summary{grid-template-columns:repeat(2,1fr)}.performance-hero{display:block}.performance-hero .secondary{margin-top:12px}}
