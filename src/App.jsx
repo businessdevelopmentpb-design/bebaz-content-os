@@ -2,7 +2,7 @@ import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react'
 import {
   BarChart3, CalendarDays, Columns3, Download, FileUp, Gauge, LayoutDashboard,
   LogOut, Plus, Search, Sparkles, Users, X, ExternalLink, RefreshCw,
-  Link2, Zap, CheckCircle2, AlertCircle, Instagram, Music2, ShieldCheck, PlugZap
+  Link2, Zap, CheckCircle2, AlertCircle, Instagram, Music2, ShieldCheck, PlugZap, Pencil
 } from 'lucide-react'
 import { supabase } from './lib/supabase'
 
@@ -16,6 +16,14 @@ const STAGES = [
 const stageLabel = Object.fromEntries(STAGES)
 const WORKFLOW_STAGES = STAGES.filter(([v])=>v!=='cancelled')
 const EMPTY_METRICS={views:0,reach:0,likes:0,comments:0,shares:0,saves:0,profile_visits:0,link_clicks:0,voucher_claims:0,transactions:0,revenue:0}
+const CONTENT_BRANDS=['PhotoBebaz','Bebaz Event','Bebaz Adz','BebazLand']
+const CONTENT_PILLARS=['Branding','Promotion','Entertain']
+const CONTENT_TOPICS=['Branding','Engagement','Education','Information','Trend']
+const CONTENT_PLATFORMS=['Instagram','Tiktok','Instagram & TikTok']
+const CONTENT_TYPES=['Feeds','Video','Carousel']
+const normalizeBrand=b=>b==='PB'?'PhotoBebaz':b==='Bebaz Land'?'BebazLand':b==='BL & PB'?'PhotoBebaz':(CONTENT_BRANDS.includes(b)?b:'PhotoBebaz')
+const normalizePlatform=p=>p==='TikTok'?'Tiktok':(CONTENT_PLATFORMS.includes(p)?p:'Instagram & TikTok')
+const normalizeType=t=>t==='Feed'?'Feeds':(CONTENT_TYPES.includes(t)?t:'Video')
 const money=n=>new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(Number(n||0))
 const num=n=>new Intl.NumberFormat('id-ID').format(Number(n||0))
 const pct=n=>`${Number(n||0).toFixed(2)}%`
@@ -77,6 +85,7 @@ function App(){
   const [picFilter,setPicFilter]=useState('All')
   const [monthFilter,setMonthFilter]=useState('All')
   const [showForm,setShowForm]=useState(false)
+  const [editContent,setEditContent]=useState(null)
   const [metricContent,setMetricContent]=useState(null)
   const [socialContent,setSocialContent]=useState(null)
   const [detailContent,setDetailContent]=useState(null)
@@ -148,6 +157,23 @@ function App(){
     if(error) return setNotice(error.message)
     setShowForm(false); setNotice(`Created ${code}`); loadAll()
   }
+
+  async function updateContent(id,payload){
+    const clean={...payload}
+    delete clean.id
+    delete clean.created_at
+    delete clean.updated_at
+    delete clean.created_by
+    delete clean.pic_name
+    delete clean.editor_name
+    delete clean.social_platforms
+    for(const key of Object.keys(EMPTY_METRICS)) delete clean[key]
+    const {error}=await supabase.from('contents').update(clean).eq('id',id)
+    if(error)return setNotice(error.message)
+    setEditContent(null)
+    setNotice(`Updated ${payload.content_code||'content'}`)
+    loadAll()
+  }
   function nextContentCode(brand){
     const prefix=(brand||'PB').toLowerCase().includes('land')?'BL':'PB'
     const year=new Date().getFullYear()
@@ -164,23 +190,31 @@ function App(){
     const payload={...data,content_id:contentId,measured_at:new Date().toISOString().slice(0,10),created_by:session.user.id,source:'manual'}
     const {error}=await supabase.from('content_metrics').upsert(payload,{onConflict:'content_id,measured_at'})
     if(error) return setNotice(error.message)
-    setMetricContent(null);setNotice('Performance updated.');loadAll()
+    const {error:flagError}=await supabase.from('contents').update({
+      performance_manual_override:true,
+      performance_sync_status:'manual',
+      performance_sync_error:null
+    }).eq('id',contentId)
+    if(flagError)return setNotice(flagError.message)
+    setMetricContent(null);setNotice('Performance updated manually. Auto overwrite paused until you press Sync.');loadAll()
   }
 
   async function syncSocialPerformance(contentId,{quiet=false}={}){
     setSyncingIds(x=>({...x,[contentId]:true}))
-    let data=null
-    let error=null
-
-    const direct=await supabase.functions.invoke('sync-social-performance',{body:{content_id:contentId}})
-    if(!direct.error){
-      data=direct.data
-    }else{
-      const fallback=await supabase.rpc('sync_windsor_content',{p_content_id:contentId})
-      data=fallback.data
-      error=fallback.error
+    if(!quiet){
+      const {error:resetError}=await supabase.from('contents').update({
+        performance_manual_override:false,
+        performance_sync_status:'ready',
+        performance_sync_error:null
+      }).eq('id',contentId)
+      if(resetError){
+        setSyncingIds(x=>({...x,[contentId]:false}))
+        setNotice(`Social sync error: ${resetError.message}`)
+        return {ok:false,error:resetError}
+      }
     }
 
+    const {data,error}=await supabase.rpc('sync_windsor_content',{p_content_id:contentId})
     setSyncingIds(x=>({...x,[contentId]:false}))
     if(error){
       if(!quiet)setNotice(`Social sync error: ${error.message}`)
@@ -191,7 +225,6 @@ function App(){
       else if(data?.status==='partial') setNotice('Sebagian link berhasil disinkronkan. Link lainnya masih menunggu data.')
       else if(data?.status==='waiting_link') setNotice('Tambahkan Instagram atau TikTok link terlebih dahulu.')
       else if(data?.status==='waiting_data') setNotice('Link tersimpan, tetapi post belum ditemukan di source saat ini. Sistem akan mencoba lagi pada refresh berikutnya.')
-      else if(data?.status==='connection_required') setNotice('Direct API belum di-connect dan fallback source tidak tersedia.')
       else if(data?.status==='not_published') setNotice('Performance hanya disinkronkan untuk content berstatus Published.')
     }
     await loadAll()
@@ -214,7 +247,7 @@ function App(){
   }
 
   async function syncAllPublished(){
-    const targets=mergedRows.filter(r=>r.status==='published'&&(r.instagram_url||r.tiktok_url))
+    const targets=mergedRows.filter(r=>r.status==='published'&&(r.instagram_url||r.tiktok_url)&&!r.performance_manual_override)
     if(!targets.length)return setNotice('Belum ada published content yang memiliki Instagram/TikTok link.')
     setNotice(`Syncing ${targets.length} published content…`)
     for(const row of targets) await syncSocialPerformance(row.id,{quiet:true})
@@ -246,7 +279,7 @@ function App(){
   }
 
   function exportCsv(){
-    const cols=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','brief_url','preview_url','publish_url','instagram_url','tiktok_url']
+    const cols=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','copywriting','reference_url','brief_url','preview_url','publish_url','instagram_url','tiktok_url']
     const csv=[cols.join(','),...filtered.map(r=>cols.map(c=>csvEscape(r[c])).join(','))].join('\n')
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`bebaz-content-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href)
   }
@@ -254,7 +287,7 @@ function App(){
     if(!file||!canEdit)return
     const text=await file.text();const lines=parseCsv(text);if(lines.length<2)return
     const headers=lines[0].map(x=>x.trim());const items=lines.slice(1).filter(r=>r.some(Boolean)).map(vals=>Object.fromEntries(headers.map((h,i)=>[h,vals[i]||null])))
-    const accepted=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','brief_url','preview_url','publish_url','instagram_url','tiktok_url','notes']
+    const accepted=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','copywriting','reference_url','brief_url','preview_url','publish_url','instagram_url','tiktok_url','notes']
     const payload=items.map(item=>Object.fromEntries(accepted.filter(k=>item[k]!=null&&item[k]!=='').map(k=>[k,item[k]]))).filter(x=>x.title).map(x=>({...x,created_by:session.user.id,status:x.status||'idea'}))
     if(!payload.length)return setNotice('CSV has no valid rows.')
     const {error}=await supabase.from('contents').upsert(payload,{onConflict:'content_code'})
@@ -265,7 +298,7 @@ function App(){
 
   useEffect(()=>{
     if(page!=='Performance'||!session||loading)return
-    const candidates=mergedRows.filter(r=>r.status==='published'&&(r.instagram_url||r.tiktok_url)&&r.auto_sync_performance!==false)
+    const candidates=mergedRows.filter(r=>r.status==='published'&&(r.instagram_url||r.tiktok_url)&&r.auto_sync_performance!==false&&!r.performance_manual_override)
     for(const row of candidates){
       if(autoSyncAttempted.current.has(row.id))continue
       autoSyncAttempted.current.add(row.id)
@@ -309,7 +342,7 @@ function App(){
       <header><div><div className="eyebrow">CONTENT GROWTH OPERATING SYSTEM</div><h1>{page}</h1><p>Plan better creative, ship faster, learn from performance, connect content to business impact.</p></div><div className="header-actions"><button className="secondary icon-btn" onClick={loadAll} title="Refresh"><RefreshCw size={16}/></button>{canEdit&&<button className="primary" onClick={()=>setShowForm(true)}><Plus size={17}/>New Content</button>}</div></header>
       {notice&&<div className="notice"><span>{notice}</span><button onClick={()=>setNotice('')}><X size={15}/></button></div>}
       {page==='Dashboard'&&<Dashboard rows={mergedRows} published={published} inProduction={inProduction} onSchedule={onSchedule} totalViews={totalViews} revenue={revenue} onOpenDetail={setDetailContent}/>}
-      {page==='Content Plan'&&<ContentPlan rows={filtered} loading={loading} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter} brandFilter={brandFilter} setBrandFilter={setBrandFilter} platformFilter={platformFilter} setPlatformFilter={setPlatformFilter} picFilter={picFilter} setPicFilter={setPicFilter} monthFilter={monthFilter} setMonthFilter={setMonthFilter} brands={options('brand')} platforms={options('platform')} teamMembers={teamMembers} months={options('publish_date').map(x=>x.slice(0,7)).filter((x,i,a)=>a.indexOf(x)===i).sort().reverse()} canEdit={canEdit} exportCsv={exportCsv} importClick={()=>fileInput.current?.click()}/>}
+      {page==='Content Plan'&&<ContentPlan rows={filtered} loading={loading} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter} brandFilter={brandFilter} setBrandFilter={setBrandFilter} platformFilter={platformFilter} setPlatformFilter={setPlatformFilter} picFilter={picFilter} setPicFilter={setPicFilter} monthFilter={monthFilter} setMonthFilter={setMonthFilter} brands={options('brand')} platforms={options('platform')} teamMembers={teamMembers} months={options('publish_date').map(x=>x.slice(0,7)).filter((x,i,a)=>a.indexOf(x)===i).sort().reverse()} canEdit={canEdit} onEdit={setEditContent} exportCsv={exportCsv} importClick={()=>fileInput.current?.click()}/>}
       {page==='Workflow'&&<Workflow rows={mergedRows} moveStage={moveStage} canEdit={canEdit}/>}
       {page==='Performance'&&<Performance rows={mergedRows} onEdit={setMetricContent} onEditLinks={setSocialContent} onSync={syncSocialPerformance} onSyncAll={syncAllPublished} syncingIds={syncingIds} canEdit={canEdit}/>}
       {page==='Insights'&&<Insights rows={mergedRows}/>}
@@ -317,7 +350,8 @@ function App(){
       {page==='PIC List'&&<PicManager teamMembers={teamMembers} onChanged={loadAll} setNotice={setNotice}/>}
       <input ref={fileInput} hidden type="file" accept=".csv,text/csv" onChange={e=>importCsv(e.target.files?.[0])}/>
     </main>
-    {showForm&&<NewContent teamMembers={teamMembers} onClose={()=>setShowForm(false)} onSave={saveContent}/>}
+    {showForm&&<ContentForm teamMembers={teamMembers} onClose={()=>setShowForm(false)} onSave={saveContent}/>}
+    {editContent&&<ContentForm content={editContent} teamMembers={teamMembers} onClose={()=>setEditContent(null)} onSave={payload=>updateContent(editContent.id,payload)}/>}
     {metricContent&&<MetricsModal content={metricContent} metrics={metrics[metricContent.id]||EMPTY_METRICS} onClose={()=>setMetricContent(null)} onSave={saveMetrics}/>}
     {socialContent&&<SocialLinksModal content={socialContent} onClose={()=>setSocialContent(null)} onSave={saveSocialLinks}/>}
     {detailContent&&<ContentDetail content={detailContent} onClose={()=>setDetailContent(null)} onOpenPlan={()=>{
@@ -404,7 +438,7 @@ function ContentCalendar({rows,onOpenDetail}){
 }
 
 function ContentPlan(p){
-  const {rows,loading,query,setQuery,statusFilter,setStatusFilter,brandFilter,setBrandFilter,platformFilter,setPlatformFilter,picFilter,setPicFilter,monthFilter,setMonthFilter,brands,platforms,teamMembers,canEdit,exportCsv,importClick}=p
+  const {rows,loading,query,setQuery,statusFilter,setStatusFilter,brandFilter,setBrandFilter,platformFilter,setPlatformFilter,picFilter,setPicFilter,monthFilter,setMonthFilter,brands,platforms,teamMembers,canEdit,onEdit,exportCsv,importClick}=p
   return <section className="panel"><div className="toolbar"><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search content, platform, pillar, PIC…"/></div>
     <select value={monthFilter} onChange={e=>setMonthFilter(e.target.value)}><option>All</option>{p.months.map(x=><option key={x}>{x}</option>)}</select>
     <select value={brandFilter} onChange={e=>setBrandFilter(e.target.value)}><option>All</option>{brands.map(x=><option key={x}>{x}</option>)}</select>
@@ -412,7 +446,7 @@ function ContentPlan(p){
     <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="All">All status</option>{STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>
     <select value={picFilter} onChange={e=>setPicFilter(e.target.value)}><option value="All">All PIC</option>{teamMembers.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select>
     <button className="secondary" onClick={exportCsv}><Download size={16}/>Export</button>{canEdit&&<button className="secondary" onClick={importClick}><FileUp size={16}/>Import CSV</button>}</div>
-    <div className="table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Status</th><th>Title</th><th>Brand</th><th>Pillar</th><th>Topic</th><th>Platform</th><th>Type</th><th>PIC</th><th>Links</th></tr></thead><tbody>{loading?<tr><td colSpan="11">Loading…</td></tr>:rows.map(r=><tr key={r.id}><td><b>{r.content_code||'-'}</b></td><td>{r.publish_date||'-'}</td><td><span className={`status-pill s-${r.status}`}>{stageLabel[r.status]||r.status}</span></td><td className="title-cell"><b>{r.title}</b><small>{r.schedule_status||''}</small></td><td>{prettyBrand(r.brand)}</td><td>{r.content_pillar||'-'}</td><td>{r.topic||'-'}</td><td>{r.platform||'-'}</td><td>{r.post_type||'-'}</td><td>{r.pic_name||'-'}</td><td><div className="link-cluster">{r.brief_url&&<a href={r.brief_url} target="_blank" rel="noreferrer" title="Brief"><ExternalLink size={14}/></a>}{r.preview_url&&<a href={r.preview_url} target="_blank" rel="noreferrer" title="Preview"><ExternalLink size={14}/></a>}{r.publish_url&&<a href={r.publish_url} target="_blank" rel="noreferrer" title="Published"><ExternalLink size={14}/></a>}</div></td></tr>)}</tbody></table></div>
+    <div className="table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Status</th><th>Title</th><th>Brand</th><th>Pillar</th><th>Topic</th><th>Platform</th><th>Type</th><th>PIC</th><th>Links</th><th>Actions</th></tr></thead><tbody>{loading?<tr><td colSpan="12">Loading…</td></tr>:rows.map(r=><tr key={r.id}><td><b>{r.content_code||'-'}</b></td><td>{r.publish_date||'-'}</td><td><span className={`status-pill s-${r.status}`}>{stageLabel[r.status]||r.status}</span></td><td className="title-cell"><b>{r.title}</b><small>{r.schedule_status||''}</small></td><td>{prettyBrand(r.brand)}</td><td>{r.content_pillar||'-'}</td><td>{r.topic||'-'}</td><td>{r.platform||'-'}</td><td>{r.post_type||'-'}</td><td>{r.pic_name||'-'}</td><td><div className="link-cluster">{r.reference_url&&<a href={r.reference_url} target="_blank" rel="noreferrer" title="Reference"><ExternalLink size={14}/></a>}{r.brief_url&&<a href={r.brief_url} target="_blank" rel="noreferrer" title="Brief"><ExternalLink size={14}/></a>}{r.preview_url&&<a href={r.preview_url} target="_blank" rel="noreferrer" title="Preview"><ExternalLink size={14}/></a>}{r.publish_url&&<a href={r.publish_url} target="_blank" rel="noreferrer" title="Published"><ExternalLink size={14}/></a>}</div></td><td>{canEdit&&<button className="mini-btn edit-content-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button>}</td></tr>)}</tbody></table></div>
   </section>
 }
 
@@ -424,7 +458,7 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
   const synced=published.filter(r=>['synced','partial'].includes(r.performance_sync_status)).length
   const statusLabel=s=>({
     synced:'Synced',partial:'Partial',syncing:'Syncing',connection_required:'Source Offline',
-    waiting_data:'Waiting Windsor',error:'Sync Error',ready:'Ready',waiting_link:'Waiting Link',not_published:'Not Published'
+    waiting_data:'Waiting Source',manual:'Manual',error:'Sync Error',ready:'Ready',waiting_link:'Waiting Link',not_published:'Not Published'
   }[s]||'Waiting Link')
 
   return <section className="panel performance-panel">
@@ -464,7 +498,7 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
         <td><div className="performance-actions">
           {canEdit&&<button className="mini-btn" onClick={()=>onEditLinks(r)}><Link2 size={13}/>Links</button>}
           {canEdit&&(r.instagram_url||r.tiktok_url)&&<button className="mini-btn" disabled={syncingIds[r.id]} onClick={()=>onSync(r.id)}><RefreshCw size={13} className={syncingIds[r.id]?'spin':''}/>{syncingIds[r.id]?'Syncing':'Sync'}</button>}
-          {canEdit&&<button className="mini-btn" onClick={()=>onEdit(r)}>Business</button>}
+          {canEdit&&<button className="mini-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button>}
         </div></td>
       </tr>
     })}</tbody></table></div>
@@ -546,17 +580,52 @@ function PicManager({teamMembers,onChanged,setNotice}){
   </section>
 }
 
-function NewContent({teamMembers,onClose,onSave}){
-  const [f,setF]=useState({content_code:'',title:'',publish_date:'',status:'idea',brand:'PB',content_pillar:'Promotion',topic:'Branding',platform:'Instagram & TikTok',post_type:'Video',pic_member_id:'',brief_url:'',preview_url:'',publish_url:'',objective:'',hook:'',cta:''})
-  const set=(k,v)=>setF(x=>({...x,[k]:v||null}))
-  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><form className="modal-card large" onSubmit={e=>{e.preventDefault();onSave(f)}}><div className="modal-title"><div><h2>New Content</h2><p>Create one accountable content record.</p></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div><div className="form-grid">
-    <label className="span2">Title<input required value={f.title} onChange={e=>set('title',e.target.value)}/></label><label>Posting deadline<input type="date" value={f.publish_date||''} onChange={e=>set('publish_date',e.target.value)}/><small className="field-help">Automatically appears in Dashboard Calendar</small></label>
-    <label>Status<select value={f.status} onChange={e=>set('status',e.target.value)}>{STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label><label>Brand<input value={f.brand||''} onChange={e=>set('brand',e.target.value)}/></label><label>PIC<select value={f.pic_member_id||''} onChange={e=>set('pic_member_id',e.target.value)}><option value="">Unassigned</option>{teamMembers.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
-    <label>Content pillar<input value={f.content_pillar||''} onChange={e=>set('content_pillar',e.target.value)}/></label><label>Topic<input value={f.topic||''} onChange={e=>set('topic',e.target.value)}/></label><label>Platform<input value={f.platform||''} onChange={e=>set('platform',e.target.value)}/></label><label>Post type<input value={f.post_type||''} onChange={e=>set('post_type',e.target.value)}/></label>
-    <label className="span2">Hook<input value={f.hook||''} onChange={e=>set('hook',e.target.value)}/></label><label>CTA<input value={f.cta||''} onChange={e=>set('cta',e.target.value)}/></label><label className="span3">Brief URL<input value={f.brief_url||''} onChange={e=>set('brief_url',e.target.value)}/></label>
-  </div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Create content</button></div></form></div>
+function ContentForm({content=null,teamMembers,onClose,onSave}){
+  const editing=Boolean(content)
+  const initial={
+    content_code:content?.content_code||'',
+    title:content?.title||'',
+    publish_date:content?.publish_date||'',
+    status:content?.status||'idea',
+    brand:normalizeBrand(content?.brand),
+    content_pillar:CONTENT_PILLARS.includes(content?.content_pillar)?content.content_pillar:'Branding',
+    topic:CONTENT_TOPICS.includes(content?.topic)?content.topic:'Branding',
+    platform:normalizePlatform(content?.platform),
+    post_type:normalizeType(content?.post_type),
+    pic_member_id:content?.pic_member_id||'',
+    copywriting:content?.copywriting||'',
+    reference_url:content?.reference_url||'',
+    brief_url:content?.brief_url||'',
+    preview_url:content?.preview_url||'',
+    publish_url:content?.publish_url||'',
+    objective:content?.objective||'',
+    hook:content?.hook||'',
+    cta:content?.cta||'',
+    notes:content?.notes||''
+  }
+  const [f,setF]=useState(initial)
+  const set=(k,v)=>setF(x=>({...x,[k]:v===''?null:v}))
+  const select=(label,key,values)=><label>{label}<select value={f[key]||''} onChange={e=>set(key,e.target.value)}>{values.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
+    <form className="modal-card large content-form-modal" onSubmit={e=>{e.preventDefault();onSave(f)}}>
+      <div className="modal-title"><div><div className="eyebrow">{editing?'REVISE CONTENT':'NEW CONTENT'}</div><h2>{editing?'Edit Content':'New Content'}</h2><p>{editing?`${content.content_code} · Update planning tanpa membuat record baru.`:'Create one accountable content record.'}</p></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div>
+      <div className="form-grid">
+        <label className="span2">Title<input required value={f.title||''} onChange={e=>set('title',e.target.value)}/></label>
+        <label>Posting deadline<input type="date" value={f.publish_date||''} onChange={e=>set('publish_date',e.target.value)}/><small className="field-help">Automatically appears in Dashboard Calendar</small></label>
+        <label>Status<select value={f.status||'idea'} onChange={e=>set('status',e.target.value)}>{STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+        {select('Brand','brand',CONTENT_BRANDS)}
+        <label>PIC<select value={f.pic_member_id||''} onChange={e=>set('pic_member_id',e.target.value)}><option value="">Unassigned</option>{teamMembers.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+        {select('Pillar','content_pillar',CONTENT_PILLARS)}
+        {select('Topic','topic',CONTENT_TOPICS)}
+        {select('Platform','platform',CONTENT_PLATFORMS)}
+        {select('Type','post_type',CONTENT_TYPES)}
+        <label className="span3">Copywriting<textarea rows="5" value={f.copywriting||''} onChange={e=>set('copywriting',e.target.value)} placeholder="Tulis caption / copywriting content di sini…"/></label>
+        <label className="span3">Reference URL<input type="url" value={f.reference_url||''} onChange={e=>set('reference_url',e.target.value)} placeholder="https://..."/></label>
+      </div>
+      <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">{editing?'Save Revision':'Create Content'}</button></div>
+    </form>
+  </div>
 }
-
 
 function ContentDetail({content,onClose,onOpenPlan}){
   const metricsFilled=['views','reach','likes','comments','shares','saves','profile_visits','link_clicks','transactions','revenue'].some(k=>Number(content[k]||0)>0)
@@ -597,6 +666,7 @@ function ContentDetail({content,onClose,onOpenPlan}){
 
         <section className="detail-section">
           <h3>Creative direction</h3>
+          <div className="detail-copy"><small>Copywriting</small><p>{content.copywriting||'—'}</p></div>
           <div className="detail-copy"><small>Objective</small><p>{content.objective||'—'}</p></div>
           <div className="detail-copy"><small>Hook</small><p>{content.hook||'—'}</p></div>
           <div className="detail-copy"><small>CTA</small><p>{content.cta||'—'}</p></div>
@@ -607,6 +677,7 @@ function ContentDetail({content,onClose,onOpenPlan}){
       <section className="detail-section">
         <div className="panel-head"><h3>Links</h3></div>
         <div className="detail-links">
+          {content.reference_url?<a href={content.reference_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Reference</a>:<span>Reference —</span>}
           {content.brief_url?<a href={content.brief_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Brief</a>:<span>Brief —</span>}
           {content.preview_url?<a href={content.preview_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Preview</a>:<span>Preview —</span>}
           {content.publish_url?<a href={content.publish_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Published Post</a>:<span>Published —</span>}
@@ -654,7 +725,7 @@ function SocialLinksModal({content,onClose,onSave}){
 function MetricsModal({content,metrics,onClose,onSave}){
   const fields=[['views','Views'],['reach','Reach'],['likes','Likes'],['comments','Comments'],['shares','Shares'],['saves','Saves'],['profile_visits','Profile Visits'],['link_clicks','Link Clicks'],['voucher_claims','Voucher Claims'],['transactions','Transactions'],['revenue','Revenue (IDR)']]
   const [f,setF]=useState(Object.fromEntries(fields.map(([k])=>[k,Number(metrics[k]||0)])))
-  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><form className="modal-card" onSubmit={e=>{e.preventDefault();onSave(content.id,f)}}><div className="modal-title"><div><h2>Update performance</h2><p>{content.content_code} · {content.title}</p></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div><div className="form-grid metrics-form">{fields.map(([k,l])=><label key={k}>{l}<input type="number" min="0" step={k==='revenue'?'1000':'1'} value={f[k]} onChange={e=>setF(x=>({...x,[k]:Number(e.target.value||0)}))}/></label>)}</div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Save metrics</button></div></form></div>
+  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}><form className="modal-card" onSubmit={e=>{e.preventDefault();onSave(content.id,f)}}><div className="modal-title"><div><div className="eyebrow">EDIT PERFORMANCE</div><h2>Edit Performance</h2><p>{content.content_code} · {content.title}</p><small className="manual-edit-note">Manual values are preserved until you press Sync again.</small></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div><div className="form-grid metrics-form">{fields.map(([k,l])=><label key={k}>{l}<input type="number" min="0" step={k==='revenue'?'1000':'1'} value={f[k]} onChange={e=>setF(x=>({...x,[k]:Number(e.target.value||0)}))}/></label>)}</div><div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">Save Changes</button></div></form></div>
 }
 
 export default App
