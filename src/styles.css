@@ -179,3 +179,10 @@
 .csv-import-guide span{font-size:11px;font-weight:800}
 .csv-import-guide small{font-size:10px;color:var(--muted)}
 @media(max-width:760px){.creative-writing-pair{grid-template-columns:1fr}.csv-import-guide{display:grid;gap:4px}}
+
+.detail-copy-main p{white-space:pre-wrap;word-break:break-word}
+.detail-links .published-link{border-color:#ff2f92;background:#fff3f8;color:#a80055}
+.detail-links .published-link:hover{background:#ffe5f1;border-color:#ff2f92}
+.detail-performance-compact{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media(max-width:900px){.detail-performance-compact{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:520px){.detail-performance-compact{grid-template-columns:1fr}}
