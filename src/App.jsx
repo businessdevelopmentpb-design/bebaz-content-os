@@ -413,16 +413,89 @@ function App(){
     const csv=[cols.join(','),...filtered.map(r=>cols.map(c=>csvEscape(r[c])).join(','))].join('\n')
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`bebaz-content-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href)
   }
+  function downloadCsvTemplate(){
+    const headers=['Posting Date','Status','Title','Brand','Pillar','Topic','Platform','Type','PIC','Caption','Copywriting','Reference URL']
+    const example=['2026-10-01','Idea','CONTOH - Hapus baris ini sebelum import','PhotoBebaz','Promotion','Trend','Instagram & TikTok','Video','','Caption final untuk Instagram/TikTok','Script / wording / text yang tampil di konten','https://example.com/reference']
+    const csv='\ufeff'+[headers.map(csvEscape).join(','),example.map(csvEscape).join(',')].join('\n')
+    const a=document.createElement('a')
+    a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}))
+    a.download='Bebaz-Content-Plan-Import-Template.csv'
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+
   async function importCsv(file){
     if(!file||!canEdit)return
-    const text=await file.text();const lines=parseCsv(text);if(lines.length<2)return
-    const headers=lines[0].map(x=>x.trim());const items=lines.slice(1).filter(r=>r.some(Boolean)).map(vals=>Object.fromEntries(headers.map((h,i)=>[h,vals[i]||null])))
-    const accepted=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','copywriting','reference_url','brief_url','preview_url','publish_url','instagram_url','tiktok_url','notes']
-    const payload=items.map(item=>Object.fromEntries(accepted.filter(k=>item[k]!=null&&item[k]!=='').map(k=>[k,item[k]]))).filter(x=>x.title).map(x=>({...x,created_by:session.user.id,status:x.status||'idea'}))
-    if(!payload.length)return setNotice('CSV has no valid rows.')
-    const {error}=await supabase.from('contents').upsert(payload,{onConflict:'content_code'})
-    if(error)setNotice(error.message);else{setNotice(`${payload.length} CSV rows imported.`);loadAll()}
-    fileInput.current.value=''
+    try{
+      const text=(await file.text()).replace(/^\ufeff/,'')
+      const parsed=parseCsv(text).filter(row=>row.some(cell=>cleanText(cell)))
+      if(parsed.length<2)return setNotice('CSV kosong. Gunakan tombol CSV Template terlebih dahulu.')
+
+      const headers=parsed[0].map(csvHeaderKey)
+      const items=parsed.slice(1).map(vals=>Object.fromEntries(headers.map((h,i)=>[h,vals[i]??''])))
+      const existing=new Set(rows.map(r=>(r.publish_date||'')+'|'+normalizeImportBrand(r.brand)+'|'+cleanText(r.title).toLowerCase()))
+      const reserved=[]
+      const payload=[]
+      let skipped=0
+      let missingPic=0
+      let badDate=0
+
+      for(const item of items){
+        const title=cleanText(item.title)
+        if(!title||/^contoh\s*-\s*hapus/i.test(title)){skipped++;continue}
+
+        const publishDate=normalizeImportDate(item.publish_date)
+        if(!publishDate){badDate++;skipped++;continue}
+
+        const brand=normalizeImportBrand(item.brand)
+        const fingerprint=publishDate+'|'+brand+'|'+title.toLowerCase()
+        if(existing.has(fingerprint)){skipped++;continue}
+
+        const picRaw=cleanText(item.pic)
+        const pic=picRaw?teamMembers.find(p=>cleanText(p.name).toLowerCase()===picRaw.toLowerCase()):null
+        if(picRaw&&!pic)missingPic++
+
+        const contentCode=cleanText(item.content_code)||nextContentCode(brand,publishDate,reserved)
+        reserved.push(contentCode)
+        existing.add(fingerprint)
+
+        payload.push({
+          content_code:contentCode,
+          publish_date:publishDate,
+          status:normalizeImportStatus(item.status),
+          title,
+          brand,
+          content_pillar:normalizeImportPillar(item.content_pillar),
+          topic:normalizeImportTopic(item.topic),
+          platform:normalizeImportPlatform(item.platform),
+          post_type:normalizeImportType(item.post_type),
+          pic_member_id:pic?.id||null,
+          caption:cleanText(item.caption)||null,
+          copywriting:cleanText(item.copywriting)||null,
+          reference_url:cleanText(item.reference_url)||null,
+          created_by:session.user.id
+        })
+      }
+
+      if(!payload.length){
+        const reasons=[]
+        if(badDate)reasons.push(badDate+' tanggal tidak valid')
+        if(skipped)reasons.push(skipped+' baris dilewati')
+        return setNotice('Tidak ada baris yang bisa diimport'+(reasons.length?': '+reasons.join(' · '):'.'))
+      }
+
+      const {error}=await supabase.from('contents').insert(payload)
+      if(error)return setNotice('CSV import error: '+error.message)
+
+      const notes=[payload.length+' content berhasil masuk ke Content Plan']
+      if(skipped)notes.push(skipped+' baris dilewati')
+      if(missingPic)notes.push(missingPic+' PIC tidak ditemukan → Unassigned')
+      if(badDate)notes.push(badDate+' tanggal invalid')
+      setNotice(notes.join(' · '))
+      await loadAll()
+    }finally{
+      if(fileInput.current)fileInput.current.value=''
+    }
   }
   function parseCsv(text){let rows=[],row=[],cell='',quoted=false;for(let i=0;i<text.length;i++){let ch=text[i];if(ch==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(ch===','&&!quoted){row.push(cell);cell=''}else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell=''}else cell+=ch}if(cell||row.length){row.push(cell);rows.push(row)}return rows}
 
