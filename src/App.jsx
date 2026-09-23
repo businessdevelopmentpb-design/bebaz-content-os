@@ -7,6 +7,13 @@ import {
 import { supabase } from './lib/supabase'
 
 const SHARED_EMAIL='businessdevelopmentpb@gmail.com'
+const PB_EMBED=new URLSearchParams(window.location.search).get('embed')==='1'
+if(PB_EMBED){
+  document.body.classList.add('pb-embed')
+  const st=document.createElement('style')
+  st.textContent='body.pb-embed .app-shell{grid-template-columns:1fr!important}body.pb-embed .app-shell>aside{display:none!important}body.pb-embed .app-shell>main{min-width:0!important}body.pb-embed .login-shell{min-height:100vh}'
+  document.head.appendChild(st)
+}
 
 const STAGES = [
   ['idea','Idea'],['briefing','Briefing'],['production','Production'],['editing','Editing'],
@@ -152,6 +159,21 @@ function App(){
     supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)})
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{setSession(s);setAuthReady(true)})
     return()=>subscription.unsubscribe()
+  },[])
+
+  useEffect(()=>{
+    if(!PB_EMBED)return
+    const handler=async e=>{
+      const m=e.data||{}
+      if(m.source!=='PB_SUPERTEAM')return
+      if(m.type==='SESSION'&&m.session?.access_token&&m.session?.refresh_token){
+        await supabase.auth.setSession({access_token:m.session.access_token,refresh_token:m.session.refresh_token})
+      }
+      if(m.type==='NAV'&&m.page)setPage(m.page)
+    }
+    window.addEventListener('message',handler)
+    window.parent?.postMessage({source:'PB_MODULE',module:'content',type:'READY'},'*')
+    return()=>window.removeEventListener('message',handler)
   },[])
 
   const loadAll=useCallback(async()=>{
