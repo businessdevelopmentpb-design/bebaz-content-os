@@ -912,8 +912,20 @@ function ContentForm({content=null,teamMembers,onClose,onSave}){
 }
 
 function ContentDetail({content,onClose,onOpenPlan}){
-  const metricsFilled=['views','reach','likes','comments','shares','saves','profile_visits','link_clicks','transactions','revenue'].some(k=>Number(content[k]||0)>0)
+  const metricsFilled=['views','reach','likes','comments','shares','saves','profile_visits','link_clicks'].some(k=>Number(content[k]||0)>0)
   const eng=Number(content.likes||0)+Number(content.comments||0)+Number(content.shares||0)+Number(content.saves||0)
+  const publishedLinks=[
+    content.publish_url?{label:'Open Published Post',url:content.publish_url}:null,
+    content.instagram_url?{label:'Open Instagram',url:content.instagram_url}:null,
+    content.tiktok_url?{label:'Open TikTok',url:content.tiktok_url}:null
+  ].filter(Boolean)
+  const seenPublished=new Set()
+  const uniquePublishedLinks=publishedLinks.filter(link=>{
+    const key=String(link.url||'').replace(/[?#].*$/,'').replace(/\/$/,'')
+    if(seenPublished.has(key))return false
+    seenPublished.add(key)
+    return true
+  })
   const detailRows=[
     ['Content ID',content.content_code||'-'],
     ['Posting date',content.publish_date||'-'],
@@ -950,34 +962,29 @@ function ContentDetail({content,onClose,onOpenPlan}){
 
         <section className="detail-section">
           <h3>Creative direction</h3>
-          <div className="detail-copy"><small>Caption</small><p>{content.caption||'—'}</p></div>
-          <div className="detail-copy"><small>Copywriting</small><p>{content.copywriting||'—'}</p></div>
-          <div className="detail-copy"><small>Objective</small><p>{content.objective||'—'}</p></div>
-          <div className="detail-copy"><small>Hook</small><p>{content.hook||'—'}</p></div>
-          <div className="detail-copy"><small>CTA</small><p>{content.cta||'—'}</p></div>
-          <div className="detail-copy"><small>Notes</small><p>{content.notes||'—'}</p></div>
+          <div className="detail-copy detail-copy-main"><small>Caption</small><p>{content.caption||'—'}</p></div>
+          <div className="detail-copy detail-copy-main"><small>Copywriting</small><p>{content.copywriting||'—'}</p></div>
         </section>
       </div>
 
       <section className="detail-section">
         <div className="panel-head"><h3>Links</h3></div>
         <div className="detail-links">
-          {content.reference_url?<a href={content.reference_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Reference</a>:<span>Reference —</span>}
-          {content.brief_url?<a href={content.brief_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Brief</a>:<span>Brief —</span>}
-          {content.preview_url?<a href={content.preview_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Preview</a>:<span>Preview —</span>}
-          {content.publish_url?<a href={content.publish_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Published Post</a>:<span>Published —</span>}
+          {content.reference_url&&<a href={content.reference_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Reference</a>}
+          {content.brief_url&&<a href={content.brief_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Brief</a>}
+          {content.preview_url&&<a href={content.preview_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Preview</a>}
+          {uniquePublishedLinks.map(link=><a key={link.label+link.url} className="published-link" href={link.url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>{link.label}</a>)}
+          {!content.reference_url&&!content.brief_url&&!content.preview_url&&!uniquePublishedLinks.length&&<span>No links added yet</span>}
         </div>
       </section>
 
       <section className="detail-section">
         <div className="panel-head"><h3>Performance</h3><span>{metricsFilled?'Recorded metrics':'No performance data yet'}</span></div>
-        <div className="detail-performance">
+        <div className="detail-performance detail-performance-compact">
           <div><small>Views</small><b>{num(content.views)}</b></div>
           <div><small>Reach</small><b>{num(content.reach)}</b></div>
-          <div><small>Engagement Rate</small><b>{pct(rate(eng,content.reach))}</b></div>
+          <div><small>Engagement Rate</small><b>{pct(rate(eng,content.reach||content.views))}</b></div>
           <div><small>Share Rate</small><b>{pct(rate(content.shares,content.views))}</b></div>
-          <div><small>Transactions</small><b>{num(content.transactions)}</b></div>
-          <div><small>Revenue</small><b>{money(content.revenue)}</b></div>
         </div>
       </section>
 
