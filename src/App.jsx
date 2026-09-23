@@ -409,7 +409,7 @@ function App(){
   }
 
   function exportCsv(){
-    const cols=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','copywriting','reference_url','brief_url','preview_url','publish_url','instagram_url','tiktok_url']
+    const cols=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','caption','copywriting','reference_url','brief_url','preview_url','publish_url','instagram_url','tiktok_url']
     const csv=[cols.join(','),...filtered.map(r=>cols.map(c=>csvEscape(r[c])).join(','))].join('\n')
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`bebaz-content-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href)
   }
@@ -545,7 +545,7 @@ function App(){
       <header><div><div className="eyebrow">CONTENT GROWTH OPERATING SYSTEM</div><h1>{page}</h1><p>Plan better creative, ship faster, learn from performance, connect content to business impact.</p></div><div className="header-actions"><button className="secondary icon-btn" onClick={loadAll} title="Refresh"><RefreshCw size={16}/></button>{canEdit&&<button className="primary" onClick={()=>setShowForm(true)}><Plus size={17}/>New Content</button>}</div></header>
       {notice&&<div className="notice"><span>{notice}</span><button onClick={()=>setNotice('')}><X size={15}/></button></div>}
       {page==='Dashboard'&&<Dashboard rows={mergedRows} published={published} inProduction={inProduction} onSchedule={onSchedule} totalViews={totalViews} revenue={revenue} onOpenDetail={setDetailContent}/>}
-      {page==='Content Plan'&&<ContentPlan rows={filtered} loading={loading} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter} brandFilter={brandFilter} setBrandFilter={setBrandFilter} platformFilter={platformFilter} setPlatformFilter={setPlatformFilter} picFilter={picFilter} setPicFilter={setPicFilter} monthFilter={monthFilter} setMonthFilter={setMonthFilter} brands={options('brand')} platforms={options('platform')} teamMembers={teamMembers} months={options('publish_date').map(x=>x.slice(0,7)).filter((x,i,a)=>a.indexOf(x)===i).sort().reverse()} canEdit={canEdit} onEdit={setEditContent} onDelete={deleteContent} exportCsv={exportCsv} importClick={()=>fileInput.current?.click()}/>}
+      {page==='Content Plan'&&<ContentPlan rows={filtered} loading={loading} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter} brandFilter={brandFilter} setBrandFilter={setBrandFilter} platformFilter={platformFilter} setPlatformFilter={setPlatformFilter} picFilter={picFilter} setPicFilter={setPicFilter} monthFilter={monthFilter} setMonthFilter={setMonthFilter} brands={options('brand')} platforms={options('platform')} teamMembers={teamMembers} months={options('publish_date').map(x=>x.slice(0,7)).filter((x,i,a)=>a.indexOf(x)===i).sort().reverse()} canEdit={canEdit} onEdit={setEditContent} onDelete={deleteContent} exportCsv={exportCsv} downloadTemplate={downloadCsvTemplate} importClick={()=>fileInput.current?.click()}/>}
       {page==='Workflow'&&<Workflow rows={mergedRows} moveStage={moveStage} canEdit={canEdit}/>}
       {page==='Performance'&&<Performance rows={mergedRows} onEdit={setMetricContent} onEditLinks={setSocialContent} onSync={syncSocialPerformance} onSyncAll={syncAllPublished} syncingIds={syncingIds} canEdit={canEdit}/>}
       {page==='Insights'&&<Insights rows={mergedRows}/>}
@@ -645,7 +645,7 @@ function ContentCalendar({rows,onOpenDetail,cursor,setCursor}){
 }
 
 function ContentPlan(p){
-  const {rows,loading,query,setQuery,statusFilter,setStatusFilter,brandFilter,setBrandFilter,platformFilter,setPlatformFilter,picFilter,setPicFilter,monthFilter,setMonthFilter,brands,platforms,teamMembers,canEdit,onEdit,onDelete,exportCsv,importClick}=p
+  const {rows,loading,query,setQuery,statusFilter,setStatusFilter,brandFilter,setBrandFilter,platformFilter,setPlatformFilter,picFilter,setPicFilter,monthFilter,setMonthFilter,brands,platforms,teamMembers,canEdit,onEdit,onDelete,exportCsv,downloadTemplate,importClick}=p
   return <section className="panel"><div className="toolbar">
     <div className="filter-field search-filter"><span>Search</span><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search content, platform, pillar, PIC…"/></div></div>
     <label className="filter-field"><span>Month</span><select value={monthFilter} onChange={e=>setMonthFilter(e.target.value)}><option>All</option>{p.months.map(x=><option key={x}>{x}</option>)}</select></label>
@@ -653,7 +653,8 @@ function ContentPlan(p){
     <label className="filter-field"><span>Platform</span><select value={platformFilter} onChange={e=>setPlatformFilter(e.target.value)}><option>All</option>{platforms.map(x=><option key={x}>{x}</option>)}</select></label>
     <label className="filter-field"><span>Status</span><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="All">All status</option>{STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
     <label className="filter-field"><span>PIC</span><select value={picFilter} onChange={e=>setPicFilter(e.target.value)}><option value="All">All PIC</option>{teamMembers.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-    <button className="secondary toolbar-action" onClick={exportCsv}><Download size={16}/>Export</button>{canEdit&&<button className="secondary toolbar-action" onClick={importClick}><FileUp size={16}/>Import CSV</button>}</div>
+    <button className="secondary toolbar-action" onClick={exportCsv}><Download size={16}/>Export</button>{canEdit&&<button className="secondary toolbar-action" onClick={downloadTemplate}><Download size={16}/>CSV Template</button>}{canEdit&&<button className="secondary toolbar-action" onClick={importClick}><FileUp size={16}/>Import CSV</button>}</div>
+    {canEdit&&<div className="csv-import-guide"><b>CSV format</b><span>Posting Date · Status · Title · Brand · Pillar · Topic · Platform · Type · PIC · Caption · Copywriting · Reference URL</span><small>Title + Posting Date wajib. Content ID dibuat otomatis. PIC harus sama dengan nama di PIC List.</small></div>}
     <div className="table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Status</th><th>Title</th><th>Brand</th><th>Pillar</th><th>Topic</th><th>Platform</th><th>Type</th><th>PIC</th><th>Links</th><th>Actions</th></tr></thead><tbody>{loading?<tr><td colSpan="12">Loading…</td></tr>:rows.map(r=><tr key={r.id}><td><b>{r.content_code||'-'}</b></td><td>{r.publish_date||'-'}</td><td><span className={`status-pill s-${r.status}`}>{stageLabel[r.status]||r.status}</span></td><td className="title-cell"><b>{r.title}</b><small>{r.schedule_status||''}</small></td><td>{prettyBrand(r.brand)}</td><td>{r.content_pillar||'-'}</td><td>{r.topic||'-'}</td><td>{r.platform||'-'}</td><td>{r.post_type||'-'}</td><td>{r.pic_name||'-'}</td><td><div className="link-cluster">{r.reference_url&&<a href={r.reference_url} target="_blank" rel="noreferrer" title="Reference"><ExternalLink size={14}/></a>}{r.brief_url&&<a href={r.brief_url} target="_blank" rel="noreferrer" title="Brief"><ExternalLink size={14}/></a>}{r.preview_url&&<a href={r.preview_url} target="_blank" rel="noreferrer" title="Preview"><ExternalLink size={14}/></a>}{r.publish_url&&<a href={r.publish_url} target="_blank" rel="noreferrer" title="Published"><ExternalLink size={14}/></a>}</div></td><td>{canEdit&&<div className="row-actions"><button className="mini-btn edit-content-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button><button className="mini-btn delete-content-btn" onClick={()=>onDelete(r)}><Trash2 size={13}/>Delete</button></div>}</td></tr>)}</tbody></table></div>
   </section>
 }
@@ -844,6 +845,7 @@ function ContentForm({content=null,teamMembers,onClose,onSave}){
     platform:normalizePlatform(content?.platform),
     post_type:normalizeType(content?.post_type),
     pic_member_id:content?.pic_member_id||'',
+    caption:content?.caption||'',
     copywriting:content?.copywriting||'',
     reference_url:content?.reference_url||'',
     brief_url:content?.brief_url||'',
@@ -870,7 +872,10 @@ function ContentForm({content=null,teamMembers,onClose,onSave}){
         {select('Topic','topic',CONTENT_TOPICS)}
         {select('Platform','platform',CONTENT_PLATFORMS)}
         {select('Type','post_type',CONTENT_TYPES)}
-        <label className="span3">Copywriting<textarea rows="5" value={f.copywriting||''} onChange={e=>set('copywriting',e.target.value)} placeholder="Tulis caption / copywriting content di sini…"/></label>
+        <div className="span3 creative-writing-pair">
+          <label>Caption<textarea rows="6" value={f.caption||''} onChange={e=>set('caption',e.target.value)} placeholder="Caption final untuk Instagram / TikTok…"/></label>
+          <label>Copywriting<textarea rows="6" value={f.copywriting||''} onChange={e=>set('copywriting',e.target.value)} placeholder="Script, wording, headline, atau text yang tampil di konten…"/></label>
+        </div>
         <label className="span3">Reference URL<input type="url" value={f.reference_url||''} onChange={e=>set('reference_url',e.target.value)} placeholder="https://..."/></label>
       </div>
       <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">{editing?'Save Revision':'Create Content'}</button></div>
@@ -917,6 +922,7 @@ function ContentDetail({content,onClose,onOpenPlan}){
 
         <section className="detail-section">
           <h3>Creative direction</h3>
+          <div className="detail-copy"><small>Caption</small><p>{content.caption||'—'}</p></div>
           <div className="detail-copy"><small>Copywriting</small><p>{content.copywriting||'—'}</p></div>
           <div className="detail-copy"><small>Objective</small><p>{content.objective||'—'}</p></div>
           <div className="detail-copy"><small>Hook</small><p>{content.hook||'—'}</p></div>
