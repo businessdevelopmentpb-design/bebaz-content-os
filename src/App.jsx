@@ -59,12 +59,12 @@ const normalizeImportDate=value=>{
 const csvHeaderKey=header=>{
   const k=cleanText(header).toLowerCase().replace(/[._-]+/g,' ').replace(/\s+/g,' ')
   const aliases={
-    'posting date':'publish_date','publish date':'publish_date','date':'publish_date','deadline':'publish_date','deadline posting':'publish_date','publish_date':'publish_date',
+    'posting date':'publish_date','tanggal posting':'publish_date','publish date':'publish_date','date':'publish_date','tanggal':'publish_date','deadline':'publish_date','deadline posting':'publish_date','publish_date':'publish_date',
     'status':'status','title':'title','judul':'title','content title':'title',
     'brand':'brand','pillar':'content_pillar','content pillar':'content_pillar','content_pillar':'content_pillar',
-    'topic':'topic','platform':'platform','type':'post_type','post type':'post_type','content type':'post_type','post_type':'post_type',
+    'topic':'topic','platform':'platform','type':'post_type','tipe':'post_type','post type':'post_type','content type':'post_type','post_type':'post_type',
     'pic':'pic','owner':'pic','caption':'caption','copywriting':'copywriting','copy':'copywriting',
-    'reference url':'reference_url','reference':'reference_url','link reference':'reference_url','reference_url':'reference_url',
+    'reference url':'reference_url','referensi url':'reference_url','reference':'reference_url','referensi':'reference_url','link reference':'reference_url','reference_url':'reference_url',
     'content_code':'content_code','content code':'content_code'
   }
   return aliases[k]||k.replaceAll(' ','_')
@@ -414,9 +414,10 @@ function App(){
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`bebaz-content-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href)
   }
   function downloadCsvTemplate(){
-    const headers=['Posting Date','Status','Title','Brand','Pillar','Topic','Platform','Type','PIC','Caption','Copywriting','Reference URL']
-    const example=['2026-10-01','Idea','CONTOH - Hapus baris ini sebelum import','PhotoBebaz','Promotion','Trend','Instagram & TikTok','Video','','Caption final untuk Instagram/TikTok','Script / wording / text yang tampil di konten','https://example.com/reference']
-    const csv='\ufeff'+[headers.map(csvEscape).join(','),example.map(csvEscape).join(',')].join('\n')
+    const headers=['Tanggal Posting','Status','Judul','Brand','Pillar','Topic','Platform','Type','PIC','Caption','Copywriting','Reference URL']
+    const blank=Array(headers.length).fill('')
+    const rows=[headers,...Array.from({length:15},()=>blank)]
+    const csv='\ufeff'+rows.map(row=>row.map(csvEscape).join(',')).join('\n')
     const a=document.createElement('a')
     a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}))
     a.download='Bebaz-Content-Plan-Import-Template.csv'
@@ -432,6 +433,9 @@ function App(){
       if(parsed.length<2)return setNotice('CSV kosong. Gunakan tombol CSV Template terlebih dahulu.')
 
       const headers=parsed[0].map(csvHeaderKey)
+      if(!headers.includes('publish_date')||!headers.includes('title')){
+        return setNotice('Format CSV belum sesuai. Gunakan tombol CSV Template. Kolom wajib: Tanggal Posting dan Judul.')
+      }
       const items=parsed.slice(1).map(vals=>Object.fromEntries(headers.map((h,i)=>[h,vals[i]??''])))
       const existing=new Set(rows.map(r=>(r.publish_date||'')+'|'+normalizeImportBrand(r.brand)+'|'+cleanText(r.title).toLowerCase()))
       const reserved=[]
@@ -478,6 +482,8 @@ function App(){
       }
 
       if(!payload.length){
+        const hasAnyInput=items.some(item=>Object.values(item).some(v=>cleanText(v)))
+        if(!hasAnyInput)return setNotice('Template masih kosong. Isi minimal Tanggal Posting + Judul pada baris kedua, lalu Save as CSV dan Import kembali.')
         const reasons=[]
         if(badDate)reasons.push(badDate+' tanggal tidak valid')
         if(skipped)reasons.push(skipped+' baris dilewati')
@@ -497,7 +503,29 @@ function App(){
       if(fileInput.current)fileInput.current.value=''
     }
   }
-  function parseCsv(text){let rows=[],row=[],cell='',quoted=false;for(let i=0;i<text.length;i++){let ch=text[i];if(ch==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(ch===','&&!quoted){row.push(cell);cell=''}else if((ch==='\n'||ch==='\r')&&!quoted){if(ch==='\r'&&text[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell=''}else cell+=ch}if(cell||row.length){row.push(cell);rows.push(row)}return rows}
+  function parseCsv(text){
+    const firstLine=(text.split(/\r?\n/,1)[0]||'')
+    const counts={
+      ',':(firstLine.match(/,/g)||[]).length,
+      ';':(firstLine.match(/;/g)||[]).length,
+      '\t':(firstLine.match(/\t/g)||[]).length
+    }
+    const delimiter=Object.entries(counts).sort((a,b)=>b[1]-a[1])[0]?.[0]||','
+    let rows=[],row=[],cell='',quoted=false
+    for(let i=0;i<text.length;i++){
+      const ch=text[i]
+      if(ch==='"'){
+        if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted
+      }else if(ch===delimiter&&!quoted){
+        row.push(cell);cell=''
+      }else if((ch==='\n'||ch==='\r')&&!quoted){
+        if(ch==='\r'&&text[i+1]==='\n')i++
+        row.push(cell);rows.push(row);row=[];cell=''
+      }else cell+=ch
+    }
+    if(cell||row.length){row.push(cell);rows.push(row)}
+    return rows
+  }
 
   useEffect(()=>{
     if(page!=='Performance'||!session||loading)return
@@ -654,7 +682,7 @@ function ContentPlan(p){
     <label className="filter-field"><span>Status</span><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="All">All status</option>{STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
     <label className="filter-field"><span>PIC</span><select value={picFilter} onChange={e=>setPicFilter(e.target.value)}><option value="All">All PIC</option>{teamMembers.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
     <button className="secondary toolbar-action" onClick={exportCsv}><Download size={16}/>Export</button>{canEdit&&<button className="secondary toolbar-action" onClick={downloadTemplate}><Download size={16}/>CSV Template</button>}{canEdit&&<button className="secondary toolbar-action" onClick={importClick}><FileUp size={16}/>Import CSV</button>}</div>
-    {canEdit&&<div className="csv-import-guide"><b>CSV format</b><span>Posting Date · Status · Title · Brand · Pillar · Topic · Platform · Type · PIC · Caption · Copywriting · Reference URL</span><small>Title + Posting Date wajib. Content ID dibuat otomatis. PIC harus sama dengan nama di PIC List.</small></div>}
+    {canEdit&&<div className="csv-import-guide"><b>CSV format</b><span>Tanggal Posting · Status · Judul · Brand · Pillar · Topic · Platform · Type · PIC · Caption · Copywriting · Reference URL</span><small>Wajib: Tanggal Posting + Judul. Download template → isi row kosong → Save as CSV → Import. CSV koma atau titik-koma sama-sama bisa dibaca.</small></div>}
     <div className="table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Status</th><th>Title</th><th>Brand</th><th>Pillar</th><th>Topic</th><th>Platform</th><th>Type</th><th>PIC</th><th>Links</th><th>Actions</th></tr></thead><tbody>{loading?<tr><td colSpan="12">Loading…</td></tr>:rows.map(r=><tr key={r.id}><td><b>{r.content_code||'-'}</b></td><td>{r.publish_date||'-'}</td><td><span className={`status-pill s-${r.status}`}>{stageLabel[r.status]||r.status}</span></td><td className="title-cell"><b>{r.title}</b><small>{r.schedule_status||''}</small></td><td>{prettyBrand(r.brand)}</td><td>{r.content_pillar||'-'}</td><td>{r.topic||'-'}</td><td>{r.platform||'-'}</td><td>{r.post_type||'-'}</td><td>{r.pic_name||'-'}</td><td><div className="link-cluster">{r.reference_url&&<a href={r.reference_url} target="_blank" rel="noreferrer" title="Reference"><ExternalLink size={14}/></a>}{r.brief_url&&<a href={r.brief_url} target="_blank" rel="noreferrer" title="Brief"><ExternalLink size={14}/></a>}{r.preview_url&&<a href={r.preview_url} target="_blank" rel="noreferrer" title="Preview"><ExternalLink size={14}/></a>}{r.publish_url&&<a href={r.publish_url} target="_blank" rel="noreferrer" title="Published"><ExternalLink size={14}/></a>}</div></td><td>{canEdit&&<div className="row-actions"><button className="mini-btn edit-content-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button><button className="mini-btn delete-content-btn" onClick={()=>onDelete(r)}><Trash2 size={13}/>Delete</button></div>}</td></tr>)}</tbody></table></div>
   </section>
 }
