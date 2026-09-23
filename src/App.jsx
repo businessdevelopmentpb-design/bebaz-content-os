@@ -24,6 +24,51 @@ const CONTENT_TYPES=['Feeds','Video','Carousel']
 const normalizeBrand=b=>b==='PB'?'PhotoBebaz':b==='Bebaz Land'?'BebazLand':b==='BL & PB'?'PhotoBebaz':(CONTENT_BRANDS.includes(b)?b:'PhotoBebaz')
 const normalizePlatform=p=>p==='TikTok'?'Tiktok':(CONTENT_PLATFORMS.includes(p)?p:'Instagram & TikTok')
 const normalizeType=t=>t==='Feed'?'Feeds':(CONTENT_TYPES.includes(t)?t:'Video')
+const cleanText=v=>String(v??'').trim()
+const pickOption=(value,options,fallback,aliases={})=>{
+  const raw=cleanText(value)
+  if(!raw)return fallback
+  const alias=aliases[raw.toLowerCase()]
+  if(alias)return alias
+  return options.find(x=>x.toLowerCase()===raw.toLowerCase())||fallback
+}
+const normalizeImportBrand=v=>pickOption(v,CONTENT_BRANDS,'PhotoBebaz',{'pb':'PhotoBebaz','photobebaz':'PhotoBebaz','bebaz land':'BebazLand','bebazland':'BebazLand','bl':'BebazLand','bebaz event':'Bebaz Event','bebaz adz':'Bebaz Adz'})
+const normalizeImportPillar=v=>pickOption(v,CONTENT_PILLARS,'Branding')
+const normalizeImportTopic=v=>pickOption(v,CONTENT_TOPICS,'Branding')
+const normalizeImportPlatform=v=>pickOption(v,CONTENT_PLATFORMS,'Instagram & TikTok',{'tiktok':'Tiktok','tik tok':'Tiktok','ig':'Instagram','instagram+tiktok':'Instagram & TikTok','instagram & tiktok':'Instagram & TikTok','instagram and tiktok':'Instagram & TikTok'})
+const normalizeImportType=v=>pickOption(v,CONTENT_TYPES,'Video',{'feed':'Feeds','feeds':'Feeds','reel':'Video','reels':'Video'})
+const normalizeImportStatus=v=>{
+  const raw=cleanText(v).toLowerCase().replace(/[ _-]+/g,' ')
+  const match=STAGES.find(([key,label])=>key.replaceAll('_',' ')===raw||label.toLowerCase()===raw)
+  return match?.[0]||'idea'
+}
+const normalizeImportDate=value=>{
+  const raw=cleanText(value)
+  if(!raw)return null
+  if(/^\d{4}-\d{2}-\d{2}$/.test(raw))return raw
+  const m=raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/)
+  if(m){
+    const d=String(Number(m[1])).padStart(2,'0')
+    const mo=String(Number(m[2])).padStart(2,'0')
+    return m[3]+'-'+mo+'-'+d
+  }
+  const parsed=new Date(raw)
+  if(Number.isNaN(parsed.getTime()))return null
+  return parsed.toISOString().slice(0,10)
+}
+const csvHeaderKey=header=>{
+  const k=cleanText(header).toLowerCase().replace(/[._-]+/g,' ').replace(/\s+/g,' ')
+  const aliases={
+    'posting date':'publish_date','publish date':'publish_date','date':'publish_date','deadline':'publish_date','deadline posting':'publish_date','publish_date':'publish_date',
+    'status':'status','title':'title','judul':'title','content title':'title',
+    'brand':'brand','pillar':'content_pillar','content pillar':'content_pillar','content_pillar':'content_pillar',
+    'topic':'topic','platform':'platform','type':'post_type','post type':'post_type','content type':'post_type','post_type':'post_type',
+    'pic':'pic','owner':'pic','caption':'caption','copywriting':'copywriting','copy':'copywriting',
+    'reference url':'reference_url','reference':'reference_url','link reference':'reference_url','reference_url':'reference_url',
+    'content_code':'content_code','content code':'content_code'
+  }
+  return aliases[k]||k.replaceAll(' ','_')
+}
 const currentMonthKey=()=>{
   const d=new Date()
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
@@ -168,14 +213,14 @@ function App(){
   const options=key=>[...new Set(mergedRows.map(r=>r[key]).filter(Boolean))].sort()
   const filtered=useMemo(()=>mergedRows.filter(r=>{
     const month=r.publish_date?.slice(0,7)||''
-    const hay=`${r.content_code} ${r.title} ${r.brand} ${r.content_pillar} ${r.topic} ${r.platform} ${r.post_type} ${r.pic_name}`.toLowerCase()
+    const hay=`${r.content_code} ${r.title} ${r.brand} ${r.content_pillar} ${r.topic} ${r.platform} ${r.post_type} ${r.pic_name} ${r.caption||''} ${r.copywriting||''}`.toLowerCase()
     return (statusFilter==='All'||r.status===statusFilter) && (brandFilter==='All'||r.brand===brandFilter) &&
       (platformFilter==='All'||r.platform===platformFilter) && (picFilter==='All'||r.pic_member_id===picFilter) &&
       (monthFilter==='All'||month===monthFilter) && (!query||hay.includes(query.toLowerCase()))
   }),[mergedRows,statusFilter,brandFilter,platformFilter,picFilter,monthFilter,query])
 
   async function saveContent(payload){
-    const code=payload.content_code||nextContentCode(payload.brand)
+    const code=payload.content_code||nextContentCode(payload.brand,payload.publish_date)
     const {error}=await supabase.from('contents').insert({...payload,content_code:code,created_by:session.user.id})
     if(error) return setNotice(error.message)
     setShowForm(false); setNotice(`Created ${code}`); loadAll()
@@ -209,10 +254,12 @@ function App(){
     setNotice(`Updated ${payload.content_code||'content'}`)
     loadAll()
   }
-  function nextContentCode(brand){
+  function nextContentCode(brand,publishDate,reserved=[]){
     const prefix=(brand||'PB').toLowerCase().includes('land')?'BL':'PB'
-    const year=new Date().getFullYear()
-    const nums=rows.map(r=>r.content_code).filter(x=>x?.startsWith(`${prefix}-${year}-`)).map(x=>Number(x.split('-').pop())).filter(Number.isFinite)
+    const parsedYear=Number(String(publishDate||'').slice(0,4))
+    const year=Number.isFinite(parsedYear)&&parsedYear>2000?parsedYear:new Date().getFullYear()
+    const allCodes=[...rows.map(r=>r.content_code),...reserved].filter(Boolean)
+    const nums=allCodes.filter(x=>x?.startsWith(`${prefix}-${year}-`)).map(x=>Number(x.split('-').pop())).filter(Number.isFinite)
     return `${prefix}-${year}-${String((Math.max(0,...nums)+1)).padStart(3,'0')}`
   }
   async function moveStage(id,status){
