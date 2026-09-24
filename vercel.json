@@ -1,7 +1,5 @@
 {
   "rewrites": [
-    { "source": "/bd-superteam", "destination": "/bd-superteam/index.html" },
-    { "source": "/bd-superteam/", "destination": "/bd-superteam/index.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
