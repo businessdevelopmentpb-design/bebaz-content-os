@@ -408,11 +408,29 @@ function App(){
 
   async function syncAllPublished(scopeRows=null){
     const base=Array.isArray(scopeRows)?scopeRows:mergedRows
-    const targets=base.filter(r=>r.status==='published'&&(r.instagram_url||r.tiktok_url)&&!r.performance_manual_override)
+    const targets=base.filter(r=>r.status==='published'&&(r.instagram_url||r.tiktok_url))
     if(!targets.length)return setNotice('Belum ada published content pada periode ini yang memiliki Instagram/TikTok link.')
-    setNotice(`Syncing ${targets.length} published content…`)
+
+    const ids=targets.map(r=>r.id)
+    setNotice(`Force syncing ${targets.length} published content…`)
+
+    const {error:resetError}=await supabase
+      .from('contents')
+      .update({
+        performance_manual_override:false,
+        auto_sync_performance:true,
+        performance_sync_status:'ready',
+        performance_sync_error:null
+      })
+      .in('id',ids)
+
+    if(resetError){
+      setNotice(`Sync All error: ${resetError.message}`)
+      return
+    }
+
     for(const row of targets) await syncSocialPerformance(row.id,{quiet:true})
-    setNotice('Social performance sync selesai.')
+    setNotice('Social performance synced now. Auto-sync every 8 hours remains active.')
     await loadAll()
   }
   async function loadSocialConnections(){
@@ -818,7 +836,7 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
         <div>
           <div className="eyebrow">AUTO PERFORMANCE TRACKER</div>
           <h2>Published content · {formatMonthKey(month)}</h2>
-          <p>Paste Instagram and/or TikTok post links. Content OS matches the URL against the connected Windsor.ai feed and fills performance automatically.</p>
+          <p>Paste Instagram and/or TikTok post links. Performance auto-sync runs every 8 hours (00:00, 08:00, 16:00 WIB), and Sync buttons can force an immediate refresh anytime.</p>
         </div>
         <button className="secondary" onClick={()=>onSyncAll(published)}><Zap size={16}/>Sync This Period</button>
       </div>
