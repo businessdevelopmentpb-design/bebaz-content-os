@@ -184,6 +184,7 @@ function App(){
           refresh_token:m.session.refresh_token
         })
         if(!error&&data?.session){
+          supabase.auth.stopAutoRefresh()
           setSession(data.session)
           setAuthReady(true)
           window.parent?.postMessage({source:'PB_MODULE',module:'content',type:'AUTHED'},'*')
