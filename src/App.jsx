@@ -445,14 +445,32 @@ function App(){
 
   async function connectSocial(platform){
     if(!socialConfigured?.[platform]){
-      setNotice(`${platform==='instagram'?'Instagram':'TikTok'} Direct API belum punya developer credentials. Backend sudah siap; credentials perlu dibuat/di-authorize satu kali di developer portal.`)
+      setNotice(`${platform==='instagram'?'Instagram':'TikTok'} Direct API belum punya developer credentials. Windsor fallback tetap aktif untuk performance sync.`)
       return
     }
     setSocialLoading(true)
-    const {data,error}=await supabase.functions.invoke('social-oauth',{body:{action:'start',platform}})
+    const returnTo=PB_EMBED?'https://photobebaz-bd-superteam.vercel.app':window.location.origin
+    const {data,error}=await supabase.functions.invoke('social-oauth',{
+      body:{action:'start',platform,return_to:returnTo}
+    })
     setSocialLoading(false)
     if(error)return setNotice(`Connect ${platform} error: ${error.message}`)
-    if(data?.url)window.location.href=data.url
+    if(data?.url){
+      if(PB_EMBED){
+        const popup=window.open(
+          data.url,
+          'pb-social-oauth',
+          'popup=yes,width=620,height=760,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes'
+        )
+        if(!popup){
+          setNotice('Popup OAuth diblokir browser. Izinkan pop-up untuk PhotoBebaz BD Super Team lalu klik Connect lagi.')
+          return
+        }
+        popup.focus?.()
+      }else{
+        window.location.href=data.url
+      }
+    }
   }
 
   async function disconnectSocial(platform){
@@ -597,6 +615,21 @@ function App(){
   useEffect(()=>{
     if(page==='Social Connections'&&session)loadSocialConnections()
   },[page,session])
+
+  useEffect(()=>{
+    if(!PB_EMBED)return
+    const onOAuthResult=async e=>{
+      const m=e.data||{}
+      if(m.source!=='PB_SOCIAL_OAUTH')return
+      setPage('Social Connections')
+      if(m.connected)setNotice(`${m.connected==='instagram'?'Instagram':'TikTok'} connected successfully.`)
+      if(m.error)setNotice(`Social connection failed: ${m.error}`)
+      await loadSocialConnections()
+      await loadAll()
+    }
+    window.addEventListener('message',onOAuthResult)
+    return()=>window.removeEventListener('message',onOAuthResult)
+  },[session])
 
   useEffect(()=>{
     if(!session)return
