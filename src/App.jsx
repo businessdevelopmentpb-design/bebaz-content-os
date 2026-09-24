@@ -169,7 +169,21 @@ function App(){
       if(m.type==='SESSION'&&m.session?.access_token&&m.session?.refresh_token){
         await supabase.auth.setSession({access_token:m.session.access_token,refresh_token:m.session.refresh_token})
       }
-      if(m.type==='NAV'&&m.page)setPage(m.page)
+      if(m.type==='NAV'&&m.page){
+        const aliases={
+          'dashboard':'Dashboard',
+          'content-plan':'Content Plan',
+          'content plan':'Content Plan',
+          'workflow':'Workflow',
+          'performance':'Performance',
+          'insights':'Insights',
+          'social-connections':'Social Connections',
+          'social connections':'Social Connections',
+          'pic-list':'PIC List',
+          'pic list':'PIC List'
+        }
+        setPage(aliases[String(m.page).toLowerCase()]||m.page)
+      }
     }
     window.addEventListener('message',handler)
     window.parent?.postMessage({source:'PB_MODULE',module:'content',type:'READY'},'*')
