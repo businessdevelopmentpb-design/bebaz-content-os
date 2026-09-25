@@ -811,9 +811,64 @@ function MonthPeriodBar({rows,value,onChange,label='Period'}){
 function Workflow({rows,moveStage,canEdit}){
   const [month,setMonth]=useState(currentMonthKey)
   const monthRows=month==='All'?rows:rows.filter(r=>r.publish_date?.slice(0,7)===month)
+  const boardRef=useRef(null)
+  const dragRef=useRef({active:false,startX:0,startScroll:0})
+
+  const scrollBoard=direction=>{
+    boardRef.current?.scrollBy({left:direction*620,behavior:'smooth'})
+  }
+
+  const onPointerDown=e=>{
+    if(e.target.closest('article,select,button,input,a'))return
+    const board=boardRef.current
+    if(!board)return
+    dragRef.current={active:true,startX:e.clientX,startScroll:board.scrollLeft}
+    board.classList.add('dragging')
+    board.setPointerCapture?.(e.pointerId)
+  }
+
+  const onPointerMove=e=>{
+    if(!dragRef.current.active||!boardRef.current)return
+    boardRef.current.scrollLeft=dragRef.current.startScroll-(e.clientX-dragRef.current.startX)
+  }
+
+  const endDrag=e=>{
+    dragRef.current.active=false
+    boardRef.current?.classList.remove('dragging')
+    try{boardRef.current?.releasePointerCapture?.(e.pointerId)}catch{}
+  }
+
+  const onWheel=e=>{
+    if(!boardRef.current)return
+    // Trackpads keep their native horizontal gesture. Shift + mouse wheel scrolls the board horizontally.
+    if(e.shiftKey&&Math.abs(e.deltaY)>0){
+      e.preventDefault()
+      boardRef.current.scrollLeft+=e.deltaY
+    }
+  }
+
   return <>
     <MonthPeriodBar rows={rows} value={month} onChange={setMonth} label="Workflow period"/>
-    <div className="kanban">{WORKFLOW_STAGES.map(([value,label])=><div className="lane" key={value}><div className="lane-head"><b>{label}</b><span>{monthRows.filter(r=>r.status===value).length}</span></div>{monthRows.filter(r=>r.status===value).map(r=><article key={r.id}><small>{prettyBrand(r.brand)} · {r.platform||'No platform'}</small><h3>{r.title}</h3><p>{r.pic_name||'No PIC'} · {r.publish_date||'No date'}</p>{canEdit?<select value={r.status} onChange={e=>moveStage(r.id,e.target.value)}>{WORKFLOW_STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:<span className="status-pill">{label}</span>}</article>)}</div>)}</div>
+    <div className="workflow-scroll-tools">
+      <div><b>Content Workflow</b><span>Drag board, swipe, or Shift + scroll to move sideways</span></div>
+      <div className="workflow-scroll-buttons">
+        <button type="button" className="secondary" onClick={()=>scrollBoard(-1)} aria-label="Scroll workflow left">←</button>
+        <button type="button" className="secondary" onClick={()=>scrollBoard(1)} aria-label="Scroll workflow right">→</button>
+      </div>
+    </div>
+    <div className="workflow-scroll-shell">
+      <div
+        ref={boardRef}
+        className="kanban"
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onWheel={onWheel}
+      >
+        {WORKFLOW_STAGES.map(([value,label])=><div className="lane" key={value}><div className="lane-head"><b>{label}</b><span>{monthRows.filter(r=>r.status===value).length}</span></div>{monthRows.filter(r=>r.status===value).map(r=><article key={r.id}><small>{prettyBrand(r.brand)} · {r.platform||'No platform'}</small><h3>{r.title}</h3><p>{r.pic_name||'No PIC'} · {r.publish_date||'No date'}</p>{canEdit?<select value={r.status} onChange={e=>moveStage(r.id,e.target.value)}>{WORKFLOW_STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:<span className="status-pill">{label}</span>}</article>)}</div>)}
+      </div>
+    </div>
   </>
 }
 
