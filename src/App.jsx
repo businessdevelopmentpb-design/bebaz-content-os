@@ -839,11 +839,24 @@ function Workflow({rows,moveStage,canEdit}){
   }
 
   const onWheel=e=>{
-    if(!boardRef.current)return
-    // Trackpads keep their native horizontal gesture. Shift + mouse wheel scrolls the board horizontally.
-    if(e.shiftKey&&Math.abs(e.deltaY)>0){
-      e.preventDefault()
-      boardRef.current.scrollLeft+=e.deltaY
+    const board=boardRef.current
+    if(!board)return
+
+    const maxScroll=board.scrollWidth-board.clientWidth
+    if(maxScroll<=0)return
+
+    // Normal mouse-wheel moves the Workflow sideways while the pointer is over the board.
+    // Native horizontal trackpad gestures also continue to work.
+    if(Math.abs(e.deltaY)>=Math.abs(e.deltaX)){
+      const movingRight=e.deltaY>0
+      const movingLeft=e.deltaY<0
+      const canMoveRight=board.scrollLeft<maxScroll-1
+      const canMoveLeft=board.scrollLeft>1
+
+      if((movingRight&&canMoveRight)||(movingLeft&&canMoveLeft)){
+        e.preventDefault()
+        board.scrollLeft+=e.deltaY
+      }
     }
   }
 
