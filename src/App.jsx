@@ -919,6 +919,47 @@ function ContentCalendar({rows,onOpenDetail,cursor,setCursor}){
 
 function ContentPlan(p){
   const {rows,loading,query,setQuery,statusFilter,setStatusFilter,brandFilter,setBrandFilter,platformFilter,setPlatformFilter,picFilter,setPicFilter,monthFilter,setMonthFilter,brands,platforms,teamMembers,canEdit,onEdit,onDelete,exportCsv,downloadTemplate,importClick}=p
+  const tableScrollRef=useRef(null)
+  const topScrollRef=useRef(null)
+  const [tableScrollWidth,setTableScrollWidth]=useState(0)
+  const syncingScroll=useRef(false)
+
+  useEffect(()=>{
+    const measure=()=>{
+      const wrap=tableScrollRef.current
+      if(wrap)setTableScrollWidth(wrap.scrollWidth)
+    }
+    measure()
+    const ro=window.ResizeObserver?new ResizeObserver(measure):null
+    if(ro&&tableScrollRef.current)ro.observe(tableScrollRef.current)
+    window.addEventListener('resize',measure)
+    return()=>{
+      ro?.disconnect()
+      window.removeEventListener('resize',measure)
+    }
+  },[rows])
+
+  const syncFromTop=e=>{
+    if(syncingScroll.current)return
+    syncingScroll.current=true
+    if(tableScrollRef.current)tableScrollRef.current.scrollLeft=e.currentTarget.scrollLeft
+    requestAnimationFrame(()=>{syncingScroll.current=false})
+  }
+
+  const syncFromTable=e=>{
+    if(syncingScroll.current)return
+    syncingScroll.current=true
+    if(topScrollRef.current)topScrollRef.current.scrollLeft=e.currentTarget.scrollLeft
+    requestAnimationFrame(()=>{syncingScroll.current=false})
+  }
+
+  const nudgeTable=direction=>{
+    tableScrollRef.current?.scrollBy({left:direction*520,behavior:'smooth'})
+    setTimeout(()=>{
+      if(topScrollRef.current&&tableScrollRef.current)topScrollRef.current.scrollLeft=tableScrollRef.current.scrollLeft
+    },220)
+  }
+
   return <section className="panel"><div className="toolbar">
     <div className="filter-field search-filter"><span>Search</span><div className="search"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search content, platform, pillar, PIC…"/></div></div>
     <label className="filter-field"><span>Month</span><select value={monthFilter} onChange={e=>setMonthFilter(e.target.value)}><option>All</option>{p.months.map(x=><option key={x}>{x}</option>)}</select></label>
@@ -928,7 +969,26 @@ function ContentPlan(p){
     <label className="filter-field"><span>PIC</span><select value={picFilter} onChange={e=>setPicFilter(e.target.value)}><option value="All">All PIC</option>{teamMembers.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
     <button className="secondary toolbar-action" onClick={exportCsv}><Download size={16}/>Export</button>{canEdit&&<button className="secondary toolbar-action" onClick={downloadTemplate}><Download size={16}/>CSV Template</button>}{canEdit&&<button className="secondary toolbar-action" onClick={importClick}><FileUp size={16}/>Import CSV</button>}</div>
     {canEdit&&<div className="csv-import-guide"><b>CSV format</b><span>Status · Judul · Brand · Pillar · Topic · Platform · Type · PIC · Caption · Copywriting · Reference URL · Tanggal Posting</span><small>Wajib: Judul. Tanggal Posting baru wajib mulai status Idea Approved. Idea boleh dikumpulkan tanpa tanggal.</small></div>}
-    <div className="table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Status</th><th>Title</th><th>Brand</th><th>Pillar</th><th>Topic</th><th>Platform</th><th>Type</th><th>PIC</th><th>Links</th><th>Actions</th></tr></thead><tbody>{loading?<tr><td colSpan="12">Loading…</td></tr>:rows.map(r=><tr key={r.id}><td><b>{r.content_code||'-'}</b></td><td>{normalizeStatusValue(r.status)==='idea'?'-':(r.publish_date||'-')}</td><td><span className={`status-pill s-${normalizeStatusValue(r.status)}`}>{stageLabel[normalizeStatusValue(r.status)]||r.status}</span></td><td className="title-cell"><b>{r.title}</b><small>{r.schedule_status||''}</small></td><td>{prettyBrand(r.brand)}</td><td>{r.content_pillar||'-'}</td><td>{r.topic||'-'}</td><td>{r.platform||'-'}</td><td>{r.post_type||'-'}</td><td>{r.pic_name||'-'}</td><td><div className="link-cluster">{r.reference_url&&<a href={r.reference_url} target="_blank" rel="noreferrer" title="Reference"><ExternalLink size={14}/></a>}{r.brief_url&&<a href={r.brief_url} target="_blank" rel="noreferrer" title="Brief"><ExternalLink size={14}/></a>}{r.preview_url&&<a href={r.preview_url} target="_blank" rel="noreferrer" title="Preview"><ExternalLink size={14}/></a>}{r.publish_url&&<a href={r.publish_url} target="_blank" rel="noreferrer" title="Published"><ExternalLink size={14}/></a>}</div></td><td>{canEdit&&<div className="row-actions"><button className="mini-btn edit-content-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button><button className="mini-btn delete-content-btn" onClick={()=>onDelete(r)}><Trash2 size={13}/>Delete</button></div>}</td></tr>)}</tbody></table></div>
+
+    <div className="content-plan-scroll-tools">
+      <div><b>Geser tabel</b><span>Gunakan scrollbar ini tanpa harus turun ke bagian paling bawah.</span></div>
+      <div className="content-plan-scroll-buttons">
+        <button type="button" className="secondary" onClick={()=>nudgeTable(-1)} aria-label="Geser tabel ke kiri">←</button>
+        <button type="button" className="secondary" onClick={()=>nudgeTable(1)} aria-label="Geser tabel ke kanan">→</button>
+      </div>
+    </div>
+    <div
+      ref={topScrollRef}
+      className="content-plan-top-scroll"
+      onScroll={syncFromTop}
+      aria-label="Horizontal scroll Content Plan"
+    >
+      <div style={{width:Math.max(tableScrollWidth,1)}}/>
+    </div>
+
+    <div ref={tableScrollRef} className="table-wrap content-plan-table-wrap" onScroll={syncFromTable}>
+      <table><thead><tr><th>ID</th><th>Date</th><th>Status</th><th>Title</th><th>Brand</th><th>Pillar</th><th>Topic</th><th>Platform</th><th>Type</th><th>PIC</th><th>Links</th><th>Actions</th></tr></thead><tbody>{loading?<tr><td colSpan="12">Loading…</td></tr>:rows.map(r=><tr key={r.id}><td><b>{r.content_code||'-'}</b></td><td>{normalizeStatusValue(r.status)==='idea'?'-':(r.publish_date||'-')}</td><td><span className={`status-pill s-${normalizeStatusValue(r.status)}`}>{stageLabel[normalizeStatusValue(r.status)]||r.status}</span></td><td className="title-cell"><b>{r.title}</b><small>{r.schedule_status||''}</small></td><td>{prettyBrand(r.brand)}</td><td>{r.content_pillar||'-'}</td><td>{r.topic||'-'}</td><td>{r.platform||'-'}</td><td>{r.post_type||'-'}</td><td>{r.pic_name||'-'}</td><td><div className="link-cluster">{r.reference_url&&<a href={r.reference_url} target="_blank" rel="noreferrer" title="Reference"><ExternalLink size={14}/></a>}{r.brief_url&&<a href={r.brief_url} target="_blank" rel="noreferrer" title="Brief"><ExternalLink size={14}/></a>}{r.preview_url&&<a href={r.preview_url} target="_blank" rel="noreferrer" title="Preview"><ExternalLink size={14}/></a>}{r.publish_url&&<a href={r.publish_url} target="_blank" rel="noreferrer" title="Published"><ExternalLink size={14}/></a>}</div></td><td>{canEdit&&<div className="row-actions"><button className="mini-btn edit-content-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button><button className="mini-btn delete-content-btn" onClick={()=>onDelete(r)}><Trash2 size={13}/>Delete</button></div>}</td></tr>)}</tbody></table>
+    </div>
   </section>
 }
 
