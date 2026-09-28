@@ -157,7 +157,7 @@
 .sync-manual{color:#7b3db3}
 .metrics-form input{font-variant-numeric:tabular-nums}
 
-.row-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.row-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.content-status-cell{display:grid;gap:7px;justify-items:start}.idea-approve-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid #b9dfc2;background:#eef9f0;color:#147b35;border-radius:8px;padding:6px 8px;font:inherit;font-size:10px;font-weight:900;white-space:nowrap;cursor:pointer;transition:.15s ease}.idea-approve-btn:hover{background:#dff3e4;border-color:#8fca9d;transform:translateY(-1px)}.idea-approve-btn:active{transform:translateY(0)}
 .delete-content-btn{display:inline-flex;align-items:center;gap:5px;color:#a12620;border-color:#efc2be;background:#fff7f6}
 .delete-content-btn:hover{background:#ffe9e6;border-color:#e4a49e}
 
