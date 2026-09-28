@@ -16,18 +16,30 @@ if(PB_EMBED){
 }
 
 const STAGES = [
-  ['idea','Idea'],['briefing','Briefing'],['production','Production'],['editing','Editing'],
-  ['internal_review','Internal Review'],['revision','Revision'],['approved','Approved'],
-  ['scheduled','Scheduled'],['published','Published'],['on_hold','On Hold'],['cancelled','Cancelled']
+  ['idea','Idea'],
+  ['approved','Idea Approved'],
+  ['editing','Editing / Production'],
+  ['revision','Revision'],
+  ['published','Published'],
+  ['on_hold','Hold'],
+  ['cancelled','Cancel']
 ]
 const stageLabel = Object.fromEntries(STAGES)
-const WORKFLOW_STAGES = STAGES.filter(([v])=>v!=='cancelled')
+const WORKFLOW_STAGES = STAGES
+const DATE_REQUIRED_STAGES=new Set(['approved','editing','revision','published'])
+const requiresPublishDate=status=>DATE_REQUIRED_STAGES.has(status)
+const normalizeStatusValue=status=>({
+  briefing:'idea',
+  production:'editing',
+  internal_review:'revision',
+  scheduled:'approved'
+}[status]||status)
 const EMPTY_METRICS={views:0,reach:0,likes:0,comments:0,shares:0,saves:0,profile_visits:0,link_clicks:0,voucher_claims:0,transactions:0,revenue:0}
 const CONTENT_BRANDS=['PhotoBebaz','Bebaz Event','Bebaz Adz','BebazLand']
 const CONTENT_PILLARS=['Branding','Promotion','Entertain']
 const CONTENT_TOPICS=['Branding','Engagement','Education','Information','Trend']
 const CONTENT_PLATFORMS=['Instagram','TikTok','Instagram & TikTok']
-const CONTENT_TYPES=['Feeds','Video','Carousel']
+const CONTENT_TYPES=['Feeds','Video','Carousel','Story']
 const cleanText=v=>String(v??'').trim()
 const normalizeBrand=b=>b==='PB'?'PhotoBebaz':b==='Bebaz Land'?'BebazLand':b==='BL & PB'?'PhotoBebaz':(CONTENT_BRANDS.includes(b)?b:'PhotoBebaz')
 const normalizePlatform=p=>{
@@ -50,9 +62,25 @@ const normalizeImportBrand=v=>pickOption(v,CONTENT_BRANDS,'PhotoBebaz',{'pb':'Ph
 const normalizeImportPillar=v=>pickOption(v,CONTENT_PILLARS,'Branding')
 const normalizeImportTopic=v=>pickOption(v,CONTENT_TOPICS,'Branding')
 const normalizeImportPlatform=v=>pickOption(v,CONTENT_PLATFORMS,'Instagram & TikTok',{'tiktok':'TikTok','tik tok':'TikTok','ig':'Instagram','instagram+tiktok':'Instagram & TikTok','instagram & tiktok':'Instagram & TikTok','instagram and tiktok':'Instagram & TikTok'})
-const normalizeImportType=v=>pickOption(v,CONTENT_TYPES,'Video',{'feed':'Feeds','feeds':'Feeds','reel':'Video','reels':'Video'})
+const normalizeImportType=v=>pickOption(v,CONTENT_TYPES,'Video',{'feed':'Feeds','feeds':'Feeds','reel':'Video','reels':'Video','story':'Story','stories':'Story'})
 const normalizeImportStatus=v=>{
   const raw=cleanText(v).toLowerCase().replace(/[ _-]+/g,' ')
+  const aliases={
+    'briefing':'idea',
+    'production':'editing',
+    'editing':'editing',
+    'editing / production':'editing',
+    'internal review':'revision',
+    'approved':'approved',
+    'idea approved':'approved',
+    'scheduled':'approved',
+    'on hold':'on_hold',
+    'hold':'on_hold',
+    'cancelled':'cancelled',
+    'canceled':'cancelled',
+    'cancel':'cancelled'
+  }
+  if(aliases[raw])return aliases[raw]
   const match=STAGES.find(([key,label])=>key.replaceAll('_',' ')===raw||label.toLowerCase()===raw)
   return match?.[0]||'idea'
 }
@@ -284,7 +312,16 @@ function App(){
   }),[mergedRows,statusFilter,brandFilter,platformFilter,picFilter,monthFilter,query])
 
   async function saveContent(payload){
-    const normalizedPayload={...payload,platform:normalizePlatform(payload.platform)}
+    const status=normalizeStatusValue(payload.status||'idea')
+    const normalizedPayload={
+      ...payload,
+      status,
+      platform:normalizePlatform(payload.platform),
+      publish_date:status==='idea'?null:(payload.publish_date||null)
+    }
+    if(requiresPublishDate(status)&&!normalizedPayload.publish_date){
+      return setNotice('Posting date wajib diisi mulai status Idea Approved.')
+    }
     const code=normalizedPayload.content_code||nextContentCode(normalizedPayload.brand,normalizedPayload.publish_date)
     const {error}=await supabase.from('contents').insert({...normalizedPayload,content_code:code,created_by:session.user.id})
     if(error) return setNotice(error.message)
@@ -304,7 +341,16 @@ function App(){
   }
 
   async function updateContent(id,payload){
-    const clean={...payload,platform:normalizePlatform(payload.platform)}
+    const status=normalizeStatusValue(payload.status||'idea')
+    const clean={
+      ...payload,
+      status,
+      platform:normalizePlatform(payload.platform),
+      publish_date:status==='idea'?null:(payload.publish_date||null)
+    }
+    if(requiresPublishDate(status)&&!clean.publish_date){
+      return setNotice('Posting date wajib diisi mulai status Idea Approved.')
+    }
     delete clean.id
     delete clean.created_at
     delete clean.updated_at
@@ -328,10 +374,33 @@ function App(){
     return `${prefix}-${year}-${String((Math.max(0,...nums)+1)).padStart(3,'0')}`
   }
   async function moveStage(id,status){
-    if(!canEdit) return
-    const before=rows; setRows(r=>r.map(x=>x.id===id?{...x,status}:x))
-    const {error}=await supabase.from('contents').update({status}).eq('id',id)
+    if(!canEdit)return
+    const target=normalizeStatusValue(status)
+    const row=rows.find(x=>x.id===id)
+    if(!row)return
+    let publishDate=row.publish_date||null
+
+    if(requiresPublishDate(target)&&!publishDate){
+      const entered=window.prompt(
+        'Idea sudah approved. Masukkan tanggal posting (YYYY-MM-DD):',
+        new Date().toISOString().slice(0,10)
+      )
+      if(!entered)return
+      const normalized=normalizeImportDate(entered)
+      if(!normalized){
+        setNotice('Tanggal posting tidak valid. Gunakan format YYYY-MM-DD.')
+        return
+      }
+      publishDate=normalized
+    }
+
+    if(target==='idea')publishDate=null
+
+    const before=rows
+    setRows(r=>r.map(x=>x.id===id?{...x,status:target,publish_date:publishDate}:x))
+    const {error}=await supabase.from('contents').update({status:target,publish_date:publishDate}).eq('id',id)
     if(error){setRows(before);setNotice(error.message)}
+    else if(target==='approved')setNotice('Idea approved dan tanggal posting sudah ditetapkan.')
   }
   async function saveMetrics(contentId,data){
     const payload={...data,content_id:contentId,measured_at:new Date().toISOString().slice(0,10),created_by:session.user.id,source:'manual'}
@@ -515,7 +584,7 @@ function App(){
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`bebaz-content-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href)
   }
   function downloadCsvTemplate(){
-    const headers=['Tanggal Posting','Status','Judul','Brand','Pillar','Topic','Platform','Type','PIC','Caption','Copywriting','Reference URL']
+    const headers=['Status','Judul','Brand','Pillar','Topic','Platform','Type','PIC','Caption','Copywriting','Reference URL','Tanggal Posting']
     const blank=Array(headers.length).fill('')
     const rows=[headers,...Array.from({length:15},()=>blank)]
     const csv='\ufeff'+rows.map(row=>row.map(csvEscape).join(',')).join('\n')
@@ -534,8 +603,8 @@ function App(){
       if(parsed.length<2)return setNotice('CSV kosong. Gunakan tombol CSV Template terlebih dahulu.')
 
       const headers=parsed[0].map(csvHeaderKey)
-      if(!headers.includes('publish_date')||!headers.includes('title')){
-        return setNotice('Format CSV belum sesuai. Gunakan tombol CSV Template. Kolom wajib: Tanggal Posting dan Judul.')
+      if(!headers.includes('title')){
+        return setNotice('Format CSV belum sesuai. Gunakan tombol CSV Template. Kolom wajib: Judul.')
       }
       const items=parsed.slice(1).map(vals=>Object.fromEntries(headers.map((h,i)=>[h,vals[i]??''])))
       const existing=new Set(rows.map(r=>(r.publish_date||'')+'|'+normalizeImportBrand(r.brand)+'|'+cleanText(r.title).toLowerCase()))
@@ -549,11 +618,14 @@ function App(){
         const title=cleanText(item.title)
         if(!title||/^contoh\s*-\s*hapus/i.test(title)){skipped++;continue}
 
-        const publishDate=normalizeImportDate(item.publish_date)
-        if(!publishDate){badDate++;skipped++;continue}
+        const status=normalizeImportStatus(item.status)
+        const rawDate=cleanText(item.publish_date)
+        const publishDate=rawDate?normalizeImportDate(rawDate):null
+        if(rawDate&&!publishDate){badDate++;skipped++;continue}
+        if(requiresPublishDate(status)&&!publishDate){badDate++;skipped++;continue}
 
         const brand=normalizeImportBrand(item.brand)
-        const fingerprint=publishDate+'|'+brand+'|'+title.toLowerCase()
+        const fingerprint=(publishDate||'NO_DATE')+'|'+brand+'|'+title.toLowerCase()
         if(existing.has(fingerprint)){skipped++;continue}
 
         const picRaw=cleanText(item.pic)
@@ -567,7 +639,7 @@ function App(){
         payload.push({
           content_code:contentCode,
           publish_date:publishDate,
-          status:normalizeImportStatus(item.status),
+          status,
           title,
           brand,
           content_pillar:normalizeImportPillar(item.content_pillar),
@@ -584,9 +656,9 @@ function App(){
 
       if(!payload.length){
         const hasAnyInput=items.some(item=>Object.values(item).some(v=>cleanText(v)))
-        if(!hasAnyInput)return setNotice('Template masih kosong. Isi minimal Tanggal Posting + Judul pada baris kedua, lalu Save as CSV dan Import kembali.')
+        if(!hasAnyInput)return setNotice('Template masih kosong. Isi minimal Judul pada baris kedua, lalu Save as CSV dan Import kembali.')
         const reasons=[]
-        if(badDate)reasons.push(badDate+' tanggal tidak valid')
+        if(badDate)reasons.push(badDate+' tanggal invalid / wajib untuk status setelah approval')
         if(skipped)reasons.push(skipped+' baris dilewati')
         return setNotice('Tidak ada baris yang bisa diimport'+(reasons.length?': '+reasons.join(' · '):'.'))
       }
@@ -674,7 +746,7 @@ function App(){
   if(!session)return <AuthScreen onSession={setSession}/>
 
   const published=mergedRows.filter(r=>r.status==='published').length
-  const inProduction=mergedRows.filter(r=>['briefing','production','editing','internal_review','revision'].includes(r.status)).length
+  const inProduction=mergedRows.filter(r=>['editing','revision'].includes(normalizeStatusValue(r.status))).length
   const onSchedule=mergedRows.filter(r=>r.schedule_status==='On Schedule').length
   const totalViews=mergedRows.reduce((s,r)=>s+Number(r.views||0),0)
   const revenue=mergedRows.reduce((s,r)=>s+Number(r.revenue||0),0)
@@ -716,7 +788,7 @@ function Dashboard({rows,published,inProduction,onSchedule,totalViews,revenue,on
   const monthKey=`${calendarCursor.getFullYear()}-${String(calendarCursor.getMonth()+1).padStart(2,'0')}`
   const pipelineMonthName=calendarCursor.toLocaleDateString('en-US',{month:'long',year:'numeric'})
   const monthRows=rows.filter(r=>r.publish_date?.slice(0,7)===monthKey)
-  const needsReview=monthRows.filter(r=>['internal_review','revision'].includes(r.status)).length
+  const needsReview=monthRows.filter(r=>normalizeStatusValue(r.status)==='revision').length
   const onTimeRate=rows.length?onSchedule/rows.length*100:0
   const cards=[['Total Planned',rows.length],['Published',published],['In Production',inProduction],['On-time Rate',pct(onTimeRate)],['Total Views',num(totalViews)],['Attributed Revenue',money(revenue)]]
   return <><section className="metrics-grid">{cards.map(([k,v])=><div className="metric" key={k}><span>{k}</span><strong>{v}</strong></div>)}</section>
@@ -746,14 +818,14 @@ function ContentCalendar({rows,onOpenDetail,cursor,setCursor}){
   const goMonth=delta=>setCursor(new Date(year,month+delta,1))
   const goToday=()=>setCursor(new Date(today.getFullYear(),today.getMonth(),1))
   const publishedThisMonth=monthRows.filter(r=>r.status==='published').length
-  const scheduledThisMonth=monthRows.filter(r=>r.status==='scheduled').length
+  const approvedThisMonth=monthRows.filter(r=>normalizeStatusValue(r.status)==='approved').length
 
   return <section className="panel calendar-panel">
     <div className="calendar-head">
       <div>
         <div className="eyebrow">CONTENT CALENDAR</div>
         <h2>{monthName}</h2>
-        <p>{monthRows.length} content planned · {publishedThisMonth} published · {scheduledThisMonth} scheduled</p>
+        <p>{monthRows.length} content planned · {publishedThisMonth} published · {approvedThisMonth} idea approved</p>
       </div>
       <div className="calendar-controls">
         <button className="secondary calendar-nav" onClick={()=>goMonth(-1)} aria-label="Previous month">‹</button>
@@ -780,9 +852,9 @@ function ContentCalendar({rows,onOpenDetail,cursor,setCursor}){
     })}</div>
     <div className="calendar-legend">
       <span><i className="legend-dot published"/>Published</span>
-      <span><i className="legend-dot scheduled"/>Scheduled</span>
+      <span><i className="legend-dot scheduled"/>Idea Approved</span>
       <span><i className="legend-dot editing"/>Editing / Production</span>
-      <span><i className="legend-dot review"/>Review / Revision</span>
+      <span><i className="legend-dot review"/>Revision</span>
       <span><i className="legend-dot other"/>Other</span>
     </div>
   </section>
@@ -798,7 +870,7 @@ function ContentPlan(p){
     <label className="filter-field"><span>Status</span><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="All">All status</option>{STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
     <label className="filter-field"><span>PIC</span><select value={picFilter} onChange={e=>setPicFilter(e.target.value)}><option value="All">All PIC</option>{teamMembers.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
     <button className="secondary toolbar-action" onClick={exportCsv}><Download size={16}/>Export</button>{canEdit&&<button className="secondary toolbar-action" onClick={downloadTemplate}><Download size={16}/>CSV Template</button>}{canEdit&&<button className="secondary toolbar-action" onClick={importClick}><FileUp size={16}/>Import CSV</button>}</div>
-    {canEdit&&<div className="csv-import-guide"><b>CSV format</b><span>Tanggal Posting · Status · Judul · Brand · Pillar · Topic · Platform · Type · PIC · Caption · Copywriting · Reference URL</span><small>Wajib: Tanggal Posting + Judul. Download template → isi row kosong → Save as CSV → Import. CSV koma atau titik-koma sama-sama bisa dibaca.</small></div>}
+    {canEdit&&<div className="csv-import-guide"><b>CSV format</b><span>Status · Judul · Brand · Pillar · Topic · Platform · Type · PIC · Caption · Copywriting · Reference URL · Tanggal Posting</span><small>Wajib: Judul. Tanggal Posting baru wajib mulai status Idea Approved. Idea boleh dikumpulkan tanpa tanggal.</small></div>}
     <div className="table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Status</th><th>Title</th><th>Brand</th><th>Pillar</th><th>Topic</th><th>Platform</th><th>Type</th><th>PIC</th><th>Links</th><th>Actions</th></tr></thead><tbody>{loading?<tr><td colSpan="12">Loading…</td></tr>:rows.map(r=><tr key={r.id}><td><b>{r.content_code||'-'}</b></td><td>{r.publish_date||'-'}</td><td><span className={`status-pill s-${r.status}`}>{stageLabel[r.status]||r.status}</span></td><td className="title-cell"><b>{r.title}</b><small>{r.schedule_status||''}</small></td><td>{prettyBrand(r.brand)}</td><td>{r.content_pillar||'-'}</td><td>{r.topic||'-'}</td><td>{r.platform||'-'}</td><td>{r.post_type||'-'}</td><td>{r.pic_name||'-'}</td><td><div className="link-cluster">{r.reference_url&&<a href={r.reference_url} target="_blank" rel="noreferrer" title="Reference"><ExternalLink size={14}/></a>}{r.brief_url&&<a href={r.brief_url} target="_blank" rel="noreferrer" title="Brief"><ExternalLink size={14}/></a>}{r.preview_url&&<a href={r.preview_url} target="_blank" rel="noreferrer" title="Preview"><ExternalLink size={14}/></a>}{r.publish_url&&<a href={r.publish_url} target="_blank" rel="noreferrer" title="Published"><ExternalLink size={14}/></a>}</div></td><td>{canEdit&&<div className="row-actions"><button className="mini-btn edit-content-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button><button className="mini-btn delete-content-btn" onClick={()=>onDelete(r)}><Trash2 size={13}/>Delete</button></div>}</td></tr>)}</tbody></table></div>
   </section>
 }
@@ -818,7 +890,7 @@ function MonthPeriodBar({rows,value,onChange,label='Period'}){
 
 function Workflow({rows,moveStage,canEdit}){
   const [month,setMonth]=useState(currentMonthKey)
-  const monthRows=month==='All'?rows:rows.filter(r=>r.publish_date?.slice(0,7)===month)
+  const monthRows=month==='All'?rows:rows.filter(r=>!r.publish_date||r.publish_date?.slice(0,7)===month)
   const boardRef=useRef(null)
   const dragRef=useRef({active:false,startX:0,startScroll:0})
 
@@ -887,7 +959,7 @@ function Workflow({rows,moveStage,canEdit}){
         onPointerCancel={endDrag}
         onWheel={onWheel}
       >
-        {WORKFLOW_STAGES.map(([value,label])=><div className="lane" key={value}><div className="lane-head"><b>{label}</b><span>{monthRows.filter(r=>r.status===value).length}</span></div>{monthRows.filter(r=>r.status===value).map(r=><article key={r.id}><small>{prettyBrand(r.brand)} · {r.platform||'No platform'}</small><h3>{r.title}</h3><p>{r.pic_name||'No PIC'} · {r.publish_date||'No date'}</p>{canEdit?<select value={r.status} onChange={e=>moveStage(r.id,e.target.value)}>{WORKFLOW_STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:<span className="status-pill">{label}</span>}</article>)}</div>)}
+        {WORKFLOW_STAGES.map(([value,label])=><div className="lane" key={value}><div className="lane-head"><b>{label}</b><span>{monthRows.filter(r=>normalizeStatusValue(r.status)===value).length}</span></div>{monthRows.filter(r=>normalizeStatusValue(r.status)===value).map(r=><article key={r.id}><small>{prettyBrand(r.brand)} · {r.platform||'No platform'}</small><h3>{r.title}</h3><p>{r.pic_name||'No PIC'} · {r.publish_date||'No date'}</p>{canEdit?<select value={normalizeStatusValue(r.status)} onChange={e=>moveStage(r.id,e.target.value)}>{WORKFLOW_STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:<span className="status-pill">{label}</span>}</article>)}</div>)}
       </div>
     </div>
   </>
@@ -1050,7 +1122,7 @@ function ContentForm({content=null,teamMembers,onClose,onSave}){
     content_code:content?.content_code||'',
     title:content?.title||'',
     publish_date:content?.publish_date||'',
-    status:content?.status||'idea',
+    status:normalizeStatusValue(content?.status||'idea'),
     brand:normalizeBrand(content?.brand),
     content_pillar:CONTENT_PILLARS.includes(content?.content_pillar)?content.content_pillar:'Branding',
     topic:CONTENT_TOPICS.includes(content?.topic)?content.topic:'Branding',
@@ -1072,12 +1144,22 @@ function ContentForm({content=null,teamMembers,onClose,onSave}){
   const set=(k,v)=>setF(x=>({...x,[k]:v===''?null:v}))
   const select=(label,key,values)=><label>{label}<select value={f[key]||''} onChange={e=>set(key,e.target.value)}>{values.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
   return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
-    <form className="modal-card large content-form-modal" onSubmit={e=>{e.preventDefault();onSave(f)}}>
+    <form className="modal-card large content-form-modal" onSubmit={e=>{
+      e.preventDefault()
+      if(requiresPublishDate(f.status)&&!f.publish_date){
+        window.alert('Posting date wajib diisi mulai status Idea Approved.')
+        return
+      }
+      onSave({...f,publish_date:f.status==='idea'?null:(f.publish_date||null)})
+    }}>
       <div className="modal-title"><div><div className="eyebrow">{editing?'REVISE CONTENT':'NEW CONTENT'}</div><h2>{editing?'Edit Content':'New Content'}</h2><p>{editing?`${content.content_code} · Update planning tanpa membuat record baru.`:'Create one accountable content record.'}</p></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div>
       <div className="form-grid">
         <label className="span2">Title<input required value={f.title||''} onChange={e=>set('title',e.target.value)}/></label>
-        <label>Posting deadline<input type="date" value={f.publish_date||''} onChange={e=>set('publish_date',e.target.value)}/><small className="field-help">Automatically appears in Dashboard Calendar</small></label>
-        <label>Status<select value={f.status||'idea'} onChange={e=>set('status',e.target.value)}>{STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+        <label>Status<select value={f.status||'idea'} onChange={e=>{
+          const next=e.target.value
+          setF(x=>({...x,status:next,publish_date:next==='idea'?null:x.publish_date}))
+        }}>{STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select><small className="field-help">Idea tidak membutuhkan tanggal posting.</small></label>
+        {(requiresPublishDate(f.status)||Boolean(f.publish_date))&&<label>Posting Date {requiresPublishDate(f.status)?'*':''}<input type="date" required={requiresPublishDate(f.status)} value={f.publish_date||''} onChange={e=>set('publish_date',e.target.value)}/><small className="field-help">{requiresPublishDate(f.status)?'Wajib setelah Idea Approved.':'Tanggal existing; boleh dikosongkan jika belum dijadwalkan.'}</small></label>}
         {select('Brand','brand',CONTENT_BRANDS)}
         <label>PIC<select value={f.pic_member_id||''} onChange={e=>set('pic_member_id',e.target.value)}><option value="">Unassigned</option>{teamMembers.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
         {select('Pillar','content_pillar',CONTENT_PILLARS)}
@@ -1112,7 +1194,7 @@ function ContentDetail({content,onClose,onOpenPlan}){
   })
   const detailRows=[
     ['Content ID',content.content_code||'-'],
-    ['Posting date',content.publish_date||'-'],
+    ['Posting date',content.publish_date||'Not scheduled yet'],
     ['Status',stageLabel[content.status]||content.status||'-'],
     ['Brand',prettyBrand(content.brand)||'-'],
     ['Content pillar',content.content_pillar||'-'],
