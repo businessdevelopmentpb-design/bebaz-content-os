@@ -258,11 +258,21 @@ function App(){
     ])
     if(t.error||c.error||m.error||s.error){setNotice(`Load error: ${t.error?.message||c.error?.message||m.error?.message||s.error?.message}`);setLoading(false);return}
     setTeamMembers(t.data||[])
-    const latest={}
-    for(const x of (m.data||[])) if(!latest[x.content_id]) latest[x.content_id]=x
-    setMetrics(latest)
-    setSocialMetrics(s.data||[])
     const content=c.data||[]
+    const latestAny={}
+    const latestManual={}
+    for(const x of (m.data||[])){
+      if(!latestAny[x.content_id])latestAny[x.content_id]=x
+      if(x.source==='manual'&&!latestManual[x.content_id])latestManual[x.content_id]=x
+    }
+    const selectedMetrics={}
+    for(const row of content){
+      selectedMetrics[row.id]=row.performance_manual_override
+        ?(latestManual[row.id]||latestAny[row.id]||null)
+        :(latestAny[row.id]||null)
+    }
+    setMetrics(selectedMetrics)
+    setSocialMetrics(s.data||[])
     setRows(content)
     setLoading(false)
   },[session])
@@ -297,7 +307,7 @@ function App(){
       ...metricValues,
       metric_id:m.id||null,
       measured_at:m.measured_at||null,
-      metric_source:m.source||null,
+      metric_source:r.performance_manual_override?'manual':(m.source||null),
       social_platforms:socialByContent[r.id]||{},
       pic_name:memberName(r.pic_member_id),
       editor_name:memberName(r.editor_member_id)
@@ -1083,13 +1093,17 @@ function SocialPlatformCell({platform,url,metric}){
 function Insights({rows}){
   const [month,setMonth]=useState(currentMonthKey)
   const monthRows=month==='All'?rows:rows.filter(r=>r.publish_date?.slice(0,7)===month)
+  const manualRows=monthRows.filter(r=>r.metric_source==='manual'&&(
+    Number(r.views||0)>0||Number(r.reach||0)>0||Number(r.likes||0)>0||
+    Number(r.comments||0)>0||Number(r.shares||0)>0||Number(r.saves||0)>0||Number(r.revenue||0)>0
+  ))
   const by=key=>Object.entries(monthRows.reduce((a,r)=>{const k=key==='platform'?normalizePlatform(r[key]):(r[key]||'Unclassified');if(!a[k])a[k]={count:0,views:0,shares:0,revenue:0};a[k].count++;a[k].views+=Number(r.views||0);a[k].shares+=Number(r.shares||0);a[k].revenue+=Number(r.revenue||0);return a},{})).sort((a,b)=>b[1].views-a[1].views||b[1].count-a[1].count)
   const top=[...monthRows].filter(r=>Number(r.views||0)>0).sort((a,b)=>Number(b.views||0)-Number(a.views||0)).slice(0,8)
   return <>
     <MonthPeriodBar rows={rows} value={month} onChange={setMonth} label="Insights period"/>
-    <div className="insights-period-summary"><b>{formatMonthKey(month)}</b><span>{monthRows.length} content analyzed</span></div>
+    <div className="insights-period-summary"><b>{formatMonthKey(month)}</b><span>{monthRows.length} content analyzed · {manualRows.length} manual performance included</span></div>
     <div className="three-col">{[['Content Pillar','content_pillar'],['Platform','platform'],['Post Type','post_type']].map(([title,key])=><section className="panel" key={key}><h2>{title}</h2>{by(key).map(([name,v])=><div className="insight-row" key={name}><div><b>{name}</b><small>{v.count} content</small></div><div><b>{num(v.views)} views</b><small>{num(v.shares)} shares · {money(v.revenue)}</small></div></div>)}</section>)}</div>
-    <section className="panel top-panel"><div className="panel-head"><div><h2>Top-performing content</h2><small className="pipeline-month">{formatMonthKey(month)}</small></div><span>{top.length? 'Based on recorded views':'No performance data recorded yet'}</span></div>{top.length?top.map((r,i)=><div className="top-row" key={r.id}><b>#{i+1}</b><div><strong>{r.title}</strong><small>{r.content_code} · {r.platform} · {r.publish_date||'-'}</small></div><div><strong>{num(r.views)} views</strong><small>{num(r.shares)} shares · {money(r.revenue)}</small></div></div>):<div className="empty-state">No performance data recorded for {formatMonthKey(month)}.</div>}</section>
+    <section className="panel top-panel"><div className="panel-head"><div><h2>Top-performing content</h2><small className="pipeline-month">{formatMonthKey(month)}</small></div><span>{top.length? 'Auto sync + manual performance':'No performance data recorded yet'}</span></div>{top.length?top.map((r,i)=><div className="top-row" key={r.id}><b>#{i+1}</b><div><strong>{r.title}</strong><small>{r.content_code} · {r.platform} · {r.publish_date||'-'} · {r.metric_source==='manual'?'Manual':'Synced'}</small></div><div><strong>{num(r.views)} views</strong><small>{num(r.shares)} shares · {money(r.revenue)}</small></div></div>):<div className="empty-state">No performance data recorded for {formatMonthKey(month)}.</div>}</section>
   </>
 }
 
