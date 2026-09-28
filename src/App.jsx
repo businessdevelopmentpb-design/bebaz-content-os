@@ -572,19 +572,9 @@ function App(){
 
   async function syncSocialPerformance(contentId,{quiet=false}={}){
     setSyncingIds(x=>({...x,[contentId]:true}))
-    if(!quiet){
-      const {error:resetError}=await supabase.from('contents').update({
-        performance_manual_override:false,
-        performance_sync_status:'ready',
-        performance_sync_error:null
-      }).eq('id',contentId)
-      if(resetError){
-        setSyncingIds(x=>({...x,[contentId]:false}))
-        setNotice(`Social sync error: ${resetError.message}`)
-        return {ok:false,error:resetError}
-      }
-    }
 
+    // Keep manual performance active until the external source really succeeds.
+    // A failed/pending sync must never erase or demote valid manual metrics.
     let data=null
     let error=null
     const direct=await supabase.functions.invoke('sync-social-performance',{body:{content_id:contentId}})
@@ -605,7 +595,7 @@ function App(){
       if(data?.status==='synced') setNotice('Social performance synced.')
       else if(data?.status==='partial') setNotice('Sebagian link berhasil disinkronkan. Link lainnya masih menunggu data.')
       else if(data?.status==='waiting_link') setNotice('Tambahkan Instagram atau TikTok link terlebih dahulu.')
-      else if(data?.status==='waiting_data') setNotice('Link tersimpan, tetapi post belum ditemukan di source saat ini. Sistem akan mencoba lagi pada refresh berikutnya.')
+      else if(data?.status==='waiting_data') setNotice('Performance manual tetap aktif. Source otomatis belum menemukan post dan akan mencoba lagi pada jadwal sync berikutnya.')
       else if(data?.status==='connection_required') setNotice('Direct API belum terhubung; fallback source juga tidak tersedia.')
       else if(data?.status==='not_published') setNotice('Performance hanya disinkronkan untuk content berstatus Published.')
     }
@@ -639,10 +629,7 @@ function App(){
     const {error:resetError}=await supabase
       .from('contents')
       .update({
-        performance_manual_override:false,
-        auto_sync_performance:true,
-        performance_sync_status:'ready',
-        performance_sync_error:null
+        auto_sync_performance:true
       })
       .in('id',ids)
 
@@ -652,7 +639,7 @@ function App(){
     }
 
     for(const row of targets) await syncSocialPerformance(row.id,{quiet:true})
-    setNotice('Social performance synced now. Auto-sync every 8 hours remains active.')
+    setNotice('Sync selesai. Data manual tetap aktif untuk post yang source otomatisnya masih pending; auto-sync 8 jam tetap berjalan.')
     await loadAll()
   }
   async function loadSocialConnections(){
@@ -1235,12 +1222,14 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
         const tt=r.social_platforms?.tiktok
         return <tr key={r.id}>
           <td className="title-cell"><b>{r.title}</b><small>{r.content_code} · {r.platform||'-'} · {r.publish_date||'-'}</small></td>
-          <td><SocialPlatformCell platform="IG" url={r.instagram_url} metric={ig}/></td>
-          <td><SocialPlatformCell platform="TT" url={r.tiktok_url} metric={tt}/></td>
-          <td><div className={`sync-status sync-${r.performance_sync_status||'waiting_link'}`}>
-            {['synced','partial'].includes(r.performance_sync_status)?<CheckCircle2 size={13}/>:<AlertCircle size={13}/>}
-            <div><b>{statusLabel(r.performance_sync_status)}</b><small>{r.performance_sync_error|| (r.last_performance_sync_at?new Date(r.last_performance_sync_at).toLocaleString('id-ID'):'Never synced')}</small></div>
-          </div></td>
+          <td><SocialPlatformCell platform="IG" url={r.instagram_url} metric={ig} manualActive={r.performance_manual_override&&r.metric_source==='manual'}/></td>
+          <td><SocialPlatformCell platform="TT" url={r.tiktok_url} metric={tt} manualActive={r.performance_manual_override&&r.metric_source==='manual'}/></td>
+          <td>{r.performance_manual_override&&r.metric_source==='manual'
+            ?<div className="sync-status sync-manual"><CheckCircle2 size={13}/><div><b>Manual Active</b><small>{['waiting_data','partial'].includes(r.performance_sync_status)?'Auto source retrying · manual data preserved':'Manual performance is protected'}</small></div></div>
+            :<div className={`sync-status sync-${r.performance_sync_status||'waiting_link'}`}>
+              {['synced','partial'].includes(r.performance_sync_status)?<CheckCircle2 size={13}/>:<AlertCircle size={13}/>}
+              <div><b>{statusLabel(r.performance_sync_status)}</b><small>{r.performance_sync_error|| (r.last_performance_sync_at?new Date(r.last_performance_sync_at).toLocaleString('id-ID'):'Never synced')}</small></div>
+            </div>}</td>
           <td>{num(r.views)}</td><td>{num(r.reach)}</td><td>{num(r.likes)}</td><td>{num(r.comments)}</td><td>{num(r.shares)}</td><td>{num(r.saves)}</td>
           <td>{pct(rate(eng,r.reach||r.views))}</td>
           <td><div className="performance-actions">
@@ -1255,11 +1244,15 @@ function Performance({rows,onEdit,onEditLinks,onSync,onSyncAll,syncingIds,canEdi
 }
 
 
-function SocialPlatformCell({platform,url,metric}){
+function SocialPlatformCell({platform,url,metric,manualActive=false}){
   if(!url)return <span className="social-empty">No link</span>
   return <div className="social-platform-cell">
     <a href={url} target="_blank" rel="noreferrer"><ExternalLink size={13}/>{platform}</a>
-    {metric?.synced_at?<small>{num(metric.views)} views</small>:<small>Waiting sync</small>}
+    {metric?.synced_at
+      ?<small>{num(metric.views)} views</small>
+      :manualActive
+        ?<small>Manual data active</small>
+        :<small>Waiting sync</small>}
   </div>
 }
 
