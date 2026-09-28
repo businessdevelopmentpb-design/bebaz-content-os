@@ -307,9 +307,13 @@ function App(){
   const filtered=useMemo(()=>mergedRows.filter(r=>{
     const month=normalizeStatusValue(r.status)==='idea'?'':(r.publish_date?.slice(0,7)||'')
     const hay=`${r.content_code} ${r.title} ${r.brand} ${r.content_pillar} ${r.topic} ${r.platform} ${r.post_type} ${r.pic_name} ${r.caption||''} ${r.copywriting||''}`.toLowerCase()
-    return (statusFilter==='All'||r.status===statusFilter) && (brandFilter==='All'||r.brand===brandFilter) &&
+    return (statusFilter==='All'||normalizeStatusValue(r.status)===statusFilter) && (brandFilter==='All'||r.brand===brandFilter) &&
       (platformFilter==='All'||r.platform===platformFilter) && (picFilter==='All'||r.pic_member_id===picFilter) &&
       (monthFilter==='All'||month===monthFilter) && (!query||hay.includes(query.toLowerCase()))
+  }).sort((a,b)=>{
+    const bt=new Date(b.created_at||b.updated_at||0).getTime()
+    const at=new Date(a.created_at||a.updated_at||0).getTime()
+    return bt-at
   }),[mergedRows,statusFilter,brandFilter,platformFilter,picFilter,monthFilter,query])
 
   async function saveContent(payload){
