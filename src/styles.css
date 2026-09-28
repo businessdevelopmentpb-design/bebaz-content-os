@@ -150,7 +150,7 @@
   margin-bottom:-22px;
   border-top:1px solid var(--line);
 }
-.content-form-modal textarea{width:100%;resize:vertical;min-height:120px;border:1px solid var(--line);border-radius:9px;padding:10px 11px;font:inherit;line-height:1.5;background:#fff}
+.stage-date-modal{width:min(520px,calc(100vw - 32px));padding:24px}.stage-date-modal .modal-title{margin-bottom:18px}.stage-date-field{display:grid;gap:8px;font-size:12px;font-weight:900}.stage-date-field input{width:100%;height:48px;border:1px solid var(--line);border-radius:11px;padding:0 13px;font:inherit;font-weight:800;background:#fff}.stage-date-field input:focus{outline:2px solid rgba(255,42,135,.16);border-color:var(--pink)}.stage-date-field small{font-size:10px;line-height:1.45;color:var(--muted);font-weight:600}.stage-date-actions{margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}.stage-date-actions .primary,.stage-date-actions .secondary{min-width:150px;justify-content:center}@media(max-width:560px){.stage-date-modal{padding:20px 16px}.stage-date-actions{display:grid;grid-template-columns:1fr}.stage-date-actions .primary,.stage-date-actions .secondary{width:100%;min-width:0}}.content-form-modal textarea{width:100%;resize:vertical;min-height:120px;border:1px solid var(--line);border-radius:9px;padding:10px 11px;font:inherit;line-height:1.5;background:#fff}
 .content-form-modal textarea:focus,.content-form-modal input:focus,.content-form-modal select:focus{outline:2px solid rgba(255,42,135,.16);border-color:var(--pink)}
 .edit-content-btn{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .manual-edit-note{display:block;margin-top:7px;color:#a20051;font-size:10px;font-weight:800}
