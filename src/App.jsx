@@ -161,11 +161,44 @@ function AuthScreen({onSession}){
   </form></div>
 }
 
+const CONTENT_PAGE_KEY='pb:content:lastPage'
+const CONTENT_SCROLL_KEY='pb:content:scrollByPage'
+const CONTENT_PAGES=['Dashboard','Content Plan','Workflow','Performance','Insights','Social Connections','PIC List']
+
+const readStoredContentPage=()=>{
+  try{
+    const saved=localStorage.getItem(CONTENT_PAGE_KEY)
+    return CONTENT_PAGES.includes(saved)?saved:'Dashboard'
+  }catch{return 'Dashboard'}
+}
+const contentPageSlug=page=>({
+  'Dashboard':'dashboard',
+  'Content Plan':'content-plan',
+  'Workflow':'workflow',
+  'Performance':'performance',
+  'Insights':'insights',
+  'Social Connections':'social-connections',
+  'PIC List':'pic-list'
+}[page]||String(page||'dashboard').toLowerCase().replace(/\s+/g,'-'))
+const readContentScroll=page=>{
+  try{
+    const all=JSON.parse(sessionStorage.getItem(CONTENT_SCROLL_KEY)||'{}')
+    return Number(all?.[page]||0)
+  }catch{return 0}
+}
+const saveContentScroll=(page,y)=>{
+  try{
+    const all=JSON.parse(sessionStorage.getItem(CONTENT_SCROLL_KEY)||'{}')
+    all[page]=Math.max(0,Number(y)||0)
+    sessionStorage.setItem(CONTENT_SCROLL_KEY,JSON.stringify(all))
+  }catch{}
+}
+
 function App(){
   const [session,setSession]=useState(null)
   const [authReady,setAuthReady]=useState(false)
   const [teamMembers,setTeamMembers]=useState([])
-  const [page,setPage]=useState('Dashboard')
+  const [page,setPage]=useState(()=>readStoredContentPage())
   const [rows,setRows]=useState([])
   const [metrics,setMetrics]=useState({})
   const [socialMetrics,setSocialMetrics]=useState([])
@@ -190,20 +223,32 @@ function App(){
   const [notice,setNotice]=useState('')
   const fileInput=useRef(null)
   const autoSyncAttempted=useRef(new Set())
+  const sessionTokenRef=useRef('')
+  const dataLoadedRef=useRef(false)
+  const pageRef=useRef(page)
 
   useEffect(()=>{
     if(PB_EMBED){
       supabase.auth.getSession().then(({data})=>{
         if(data.session){
+          sessionTokenRef.current=data.session.access_token||''
           setSession(data.session)
           setAuthReady(true)
         }
       })
     }else{
-      supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)})
+      supabase.auth.getSession().then(({data})=>{
+        sessionTokenRef.current=data.session?.access_token||''
+        setSession(data.session)
+        setAuthReady(true)
+      })
     }
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_e,s)=>{
-      setSession(s)
+      sessionTokenRef.current=s?.access_token||''
+      setSession(prev=>{
+        if(prev?.access_token===s?.access_token&&prev?.user?.id===s?.user?.id)return prev
+        return s
+      })
       if(!PB_EMBED||s)setAuthReady(true)
     })
     return()=>subscription.unsubscribe()
@@ -214,18 +259,29 @@ function App(){
     const handler=async e=>{
       const m=e.data||{}
       if(m.source!=='PB_SUPERTEAM')return
+
       if(m.type==='SESSION'&&m.session?.access_token&&m.session?.refresh_token){
+        // Master re-sends SESSION when Chrome regains focus.
+        // Do not call setSession again when the exact token is already active.
+        if(sessionTokenRef.current===m.session.access_token){
+          setAuthReady(true)
+          window.parent?.postMessage({source:'PB_MODULE',module:'content',type:'AUTHED'},'*')
+          return
+        }
+
         const {data,error}=await supabase.auth.setSession({
           access_token:m.session.access_token,
           refresh_token:m.session.refresh_token
         })
         if(!error&&data?.session){
+          sessionTokenRef.current=data.session.access_token||''
           supabase.auth.stopAutoRefresh()
-          setSession(data.session)
+          setSession(prev=>prev?.access_token===data.session.access_token?prev:data.session)
           setAuthReady(true)
           window.parent?.postMessage({source:'PB_MODULE',module:'content',type:'AUTHED'},'*')
         }
       }
+
       if(m.type==='NAV'&&m.page){
         const aliases={
           'dashboard':'Dashboard',
@@ -239,17 +295,52 @@ function App(){
           'pic-list':'PIC List',
           'pic list':'PIC List'
         }
-        setPage(aliases[String(m.page).toLowerCase()]||m.page)
+        const next=aliases[String(m.page).toLowerCase()]||m.page
+        if(CONTENT_PAGES.includes(next)&&next!==pageRef.current){
+          saveContentScroll(pageRef.current,window.scrollY)
+          setPage(next)
+        }
       }
     }
     window.addEventListener('message',handler)
     window.parent?.postMessage({source:'PB_MODULE',module:'content',type:'READY'},'*')
+    window.parent?.postMessage({source:'PB_MODULE',module:'content',type:'RESTORE_REQUEST',page:contentPageSlug(pageRef.current)},'*')
     return()=>window.removeEventListener('message',handler)
   },[])
 
+  useEffect(()=>{
+    pageRef.current=page
+    try{localStorage.setItem(CONTENT_PAGE_KEY,page)}catch{}
+
+    if(PB_EMBED){
+      window.parent?.postMessage({
+        source:'PB_MODULE',
+        module:'content',
+        type:'PAGE_CHANGED',
+        page:contentPageSlug(page),
+        title:page
+      },'*')
+    }
+
+    const y=readContentScroll(page)
+    const timer=setTimeout(()=>window.scrollTo(0,y),40)
+    return()=>clearTimeout(timer)
+  },[page])
+
+  useEffect(()=>{
+    const savePosition=()=>saveContentScroll(pageRef.current,window.scrollY)
+    const onVisibility=()=>{if(document.visibilityState==='hidden')savePosition()}
+    document.addEventListener('visibilitychange',onVisibility)
+    window.addEventListener('pagehide',savePosition)
+    return()=>{
+      document.removeEventListener('visibilitychange',onVisibility)
+      window.removeEventListener('pagehide',savePosition)
+    }
+  },[])
+
   const loadAll=useCallback(async()=>{
-    if(!session) return
-    setLoading(true)
+    if(!session?.user?.id)return
+    if(!dataLoadedRef.current)setLoading(true)
     const [t,c,m,s]=await Promise.all([
       supabase.from('team_members').select('*').eq('is_active',true).order('name'),
       supabase.from('contents').select('*').order('publish_date',{ascending:false,nullsFirst:false}),
@@ -274,12 +365,20 @@ function App(){
     setMetrics(selectedMetrics)
     setSocialMetrics(s.data||[])
     setRows(content)
+    dataLoadedRef.current=true
     setLoading(false)
-  },[session])
+  },[session?.user?.id])
 
-  useEffect(()=>{if(session) loadAll(); else {setRows([]);setTeamMembers([])}},[session,loadAll])
   useEffect(()=>{
-    if(!session) return
+    if(session?.user?.id)loadAll()
+    else{
+      dataLoadedRef.current=false
+      setRows([])
+      setTeamMembers([])
+    }
+  },[session?.user?.id,loadAll])
+  useEffect(()=>{
+    if(!session?.user?.id)return
     const ch=supabase.channel('content-os-live')
       .on('postgres_changes',{event:'*',schema:'public',table:'contents'},()=>loadAll())
       .on('postgres_changes',{event:'*',schema:'public',table:'content_metrics'},()=>loadAll())
@@ -287,7 +386,7 @@ function App(){
       .on('postgres_changes',{event:'*',schema:'public',table:'team_members'},()=>loadAll())
       .subscribe()
     return()=>supabase.removeChannel(ch)
-  },[session,loadAll])
+  },[session?.user?.id,loadAll])
 
   const canEdit=Boolean(session)
   const memberName=id=>teamMembers.find(p=>p.id===id)?.name||''
