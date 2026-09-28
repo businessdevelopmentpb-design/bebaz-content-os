@@ -506,7 +506,21 @@ function App(){
     const row=rows.find(x=>x.id===id)
     if(!row)return
 
+    const current=normalizeStatusValue(row.status)
     let publishDate=row.publish_date||null
+
+    // Every Idea -> Idea Approved transition must explicitly confirm a posting date.
+    // Legacy Idea rows may still carry hidden publish_date values from the old workflow,
+    // so never silently reuse them without user confirmation.
+    if(current==='idea'&&target==='approved'){
+      setStageDateModal({
+        id,
+        target,
+        title:row.title||'Content',
+        date:new Date().toISOString().slice(0,10)
+      })
+      return
+    }
 
     if(requiresPublishDate(target)&&!publishDate){
       setStageDateModal({
