@@ -304,7 +304,7 @@ function App(){
   }),[rows,metrics,teamMembers,socialByContent])
   const options=key=>[...new Set(mergedRows.map(r=>r[key]).filter(Boolean))].sort()
   const filtered=useMemo(()=>mergedRows.filter(r=>{
-    const month=r.publish_date?.slice(0,7)||''
+    const month=normalizeStatusValue(r.status)==='idea'?'':(r.publish_date?.slice(0,7)||'')
     const hay=`${r.content_code} ${r.title} ${r.brand} ${r.content_pillar} ${r.topic} ${r.platform} ${r.post_type} ${r.pic_name} ${r.caption||''} ${r.copywriting||''}`.toLowerCase()
     return (statusFilter==='All'||r.status===statusFilter) && (brandFilter==='All'||r.brand===brandFilter) &&
       (platformFilter==='All'||r.platform===platformFilter) && (picFilter==='All'||r.pic_member_id===picFilter) &&
@@ -787,7 +787,7 @@ function Dashboard({rows,published,inProduction,onSchedule,totalViews,revenue,on
   const [calendarCursor,setCalendarCursor]=useState(()=>new Date(today.getFullYear(),today.getMonth(),1))
   const monthKey=`${calendarCursor.getFullYear()}-${String(calendarCursor.getMonth()+1).padStart(2,'0')}`
   const pipelineMonthName=calendarCursor.toLocaleDateString('en-US',{month:'long',year:'numeric'})
-  const monthRows=rows.filter(r=>r.publish_date?.slice(0,7)===monthKey)
+  const monthRows=rows.filter(r=>normalizeStatusValue(r.status)==='idea'||r.publish_date?.slice(0,7)===monthKey)
   const needsReview=monthRows.filter(r=>normalizeStatusValue(r.status)==='revision').length
   const onTimeRate=rows.length?onSchedule/rows.length*100:0
   const cards=[['Total Planned',rows.length],['Published',published],['In Production',inProduction],['On-time Rate',pct(onTimeRate)],['Total Views',num(totalViews)],['Attributed Revenue',money(revenue)]]
@@ -804,7 +804,7 @@ function ContentCalendar({rows,onOpenDetail,cursor,setCursor}){
   const monthKey=`${year}-${String(month+1).padStart(2,'0')}`
   const monthName=cursor.toLocaleDateString('en-US',{month:'long',year:'numeric'})
   const monthRows=rows
-    .filter(r=>r.publish_date?.slice(0,7)===monthKey)
+    .filter(r=>normalizeStatusValue(r.status)!=='idea'&&r.publish_date?.slice(0,7)===monthKey)
     .sort((a,b)=>(a.publish_date||'').localeCompare(b.publish_date||'')||(a.title||'').localeCompare(b.title||''))
   const grouped=monthRows.reduce((acc,row)=>{
     if(!acc[row.publish_date]) acc[row.publish_date]=[]
@@ -871,7 +871,7 @@ function ContentPlan(p){
     <label className="filter-field"><span>PIC</span><select value={picFilter} onChange={e=>setPicFilter(e.target.value)}><option value="All">All PIC</option>{teamMembers.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
     <button className="secondary toolbar-action" onClick={exportCsv}><Download size={16}/>Export</button>{canEdit&&<button className="secondary toolbar-action" onClick={downloadTemplate}><Download size={16}/>CSV Template</button>}{canEdit&&<button className="secondary toolbar-action" onClick={importClick}><FileUp size={16}/>Import CSV</button>}</div>
     {canEdit&&<div className="csv-import-guide"><b>CSV format</b><span>Status · Judul · Brand · Pillar · Topic · Platform · Type · PIC · Caption · Copywriting · Reference URL · Tanggal Posting</span><small>Wajib: Judul. Tanggal Posting baru wajib mulai status Idea Approved. Idea boleh dikumpulkan tanpa tanggal.</small></div>}
-    <div className="table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Status</th><th>Title</th><th>Brand</th><th>Pillar</th><th>Topic</th><th>Platform</th><th>Type</th><th>PIC</th><th>Links</th><th>Actions</th></tr></thead><tbody>{loading?<tr><td colSpan="12">Loading…</td></tr>:rows.map(r=><tr key={r.id}><td><b>{r.content_code||'-'}</b></td><td>{r.publish_date||'-'}</td><td><span className={`status-pill s-${r.status}`}>{stageLabel[r.status]||r.status}</span></td><td className="title-cell"><b>{r.title}</b><small>{r.schedule_status||''}</small></td><td>{prettyBrand(r.brand)}</td><td>{r.content_pillar||'-'}</td><td>{r.topic||'-'}</td><td>{r.platform||'-'}</td><td>{r.post_type||'-'}</td><td>{r.pic_name||'-'}</td><td><div className="link-cluster">{r.reference_url&&<a href={r.reference_url} target="_blank" rel="noreferrer" title="Reference"><ExternalLink size={14}/></a>}{r.brief_url&&<a href={r.brief_url} target="_blank" rel="noreferrer" title="Brief"><ExternalLink size={14}/></a>}{r.preview_url&&<a href={r.preview_url} target="_blank" rel="noreferrer" title="Preview"><ExternalLink size={14}/></a>}{r.publish_url&&<a href={r.publish_url} target="_blank" rel="noreferrer" title="Published"><ExternalLink size={14}/></a>}</div></td><td>{canEdit&&<div className="row-actions"><button className="mini-btn edit-content-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button><button className="mini-btn delete-content-btn" onClick={()=>onDelete(r)}><Trash2 size={13}/>Delete</button></div>}</td></tr>)}</tbody></table></div>
+    <div className="table-wrap"><table><thead><tr><th>ID</th><th>Date</th><th>Status</th><th>Title</th><th>Brand</th><th>Pillar</th><th>Topic</th><th>Platform</th><th>Type</th><th>PIC</th><th>Links</th><th>Actions</th></tr></thead><tbody>{loading?<tr><td colSpan="12">Loading…</td></tr>:rows.map(r=><tr key={r.id}><td><b>{r.content_code||'-'}</b></td><td>{normalizeStatusValue(r.status)==='idea'?'-':(r.publish_date||'-')}</td><td><span className={`status-pill s-${normalizeStatusValue(r.status)}`}>{stageLabel[normalizeStatusValue(r.status)]||r.status}</span></td><td className="title-cell"><b>{r.title}</b><small>{r.schedule_status||''}</small></td><td>{prettyBrand(r.brand)}</td><td>{r.content_pillar||'-'}</td><td>{r.topic||'-'}</td><td>{r.platform||'-'}</td><td>{r.post_type||'-'}</td><td>{r.pic_name||'-'}</td><td><div className="link-cluster">{r.reference_url&&<a href={r.reference_url} target="_blank" rel="noreferrer" title="Reference"><ExternalLink size={14}/></a>}{r.brief_url&&<a href={r.brief_url} target="_blank" rel="noreferrer" title="Brief"><ExternalLink size={14}/></a>}{r.preview_url&&<a href={r.preview_url} target="_blank" rel="noreferrer" title="Preview"><ExternalLink size={14}/></a>}{r.publish_url&&<a href={r.publish_url} target="_blank" rel="noreferrer" title="Published"><ExternalLink size={14}/></a>}</div></td><td>{canEdit&&<div className="row-actions"><button className="mini-btn edit-content-btn" onClick={()=>onEdit(r)}><Pencil size={13}/>Edit</button><button className="mini-btn delete-content-btn" onClick={()=>onDelete(r)}><Trash2 size={13}/>Delete</button></div>}</td></tr>)}</tbody></table></div>
   </section>
 }
 
@@ -890,7 +890,7 @@ function MonthPeriodBar({rows,value,onChange,label='Period'}){
 
 function Workflow({rows,moveStage,canEdit}){
   const [month,setMonth]=useState(currentMonthKey)
-  const monthRows=month==='All'?rows:rows.filter(r=>!r.publish_date||r.publish_date?.slice(0,7)===month)
+  const monthRows=month==='All'?rows:rows.filter(r=>normalizeStatusValue(r.status)==='idea'||!r.publish_date||r.publish_date?.slice(0,7)===month)
   const boardRef=useRef(null)
   const dragRef=useRef({active:false,startX:0,startScroll:0})
 
@@ -959,7 +959,7 @@ function Workflow({rows,moveStage,canEdit}){
         onPointerCancel={endDrag}
         onWheel={onWheel}
       >
-        {WORKFLOW_STAGES.map(([value,label])=><div className="lane" key={value}><div className="lane-head"><b>{label}</b><span>{monthRows.filter(r=>normalizeStatusValue(r.status)===value).length}</span></div>{monthRows.filter(r=>normalizeStatusValue(r.status)===value).map(r=><article key={r.id}><small>{prettyBrand(r.brand)} · {r.platform||'No platform'}</small><h3>{r.title}</h3><p>{r.pic_name||'No PIC'} · {r.publish_date||'No date'}</p>{canEdit?<select value={normalizeStatusValue(r.status)} onChange={e=>moveStage(r.id,e.target.value)}>{WORKFLOW_STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:<span className="status-pill">{label}</span>}</article>)}</div>)}
+        {WORKFLOW_STAGES.map(([value,label])=><div className="lane" key={value}><div className="lane-head"><b>{label}</b><span>{monthRows.filter(r=>normalizeStatusValue(r.status)===value).length}</span></div>{monthRows.filter(r=>normalizeStatusValue(r.status)===value).map(r=><article key={r.id}><small>{prettyBrand(r.brand)} · {r.platform||'No platform'}</small><h3>{r.title}</h3><p>{r.pic_name||'No PIC'} · {normalizeStatusValue(r.status)==='idea'?'No date':(r.publish_date||'No date')}</p>{canEdit?<select value={normalizeStatusValue(r.status)} onChange={e=>moveStage(r.id,e.target.value)}>{WORKFLOW_STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>:<span className="status-pill">{label}</span>}</article>)}</div>)}
       </div>
     </div>
   </>
@@ -1121,7 +1121,7 @@ function ContentForm({content=null,teamMembers,onClose,onSave}){
   const initial={
     content_code:content?.content_code||'',
     title:content?.title||'',
-    publish_date:content?.publish_date||'',
+    publish_date:normalizeStatusValue(content?.status||'idea')==='idea'?'':(content?.publish_date||''),
     status:normalizeStatusValue(content?.status||'idea'),
     brand:normalizeBrand(content?.brand),
     content_pillar:CONTENT_PILLARS.includes(content?.content_pillar)?content.content_pillar:'Branding',
@@ -1194,7 +1194,7 @@ function ContentDetail({content,onClose,onOpenPlan}){
   })
   const detailRows=[
     ['Content ID',content.content_code||'-'],
-    ['Posting date',content.publish_date||'Not scheduled yet'],
+    ['Posting date',normalizeStatusValue(content.status)==='idea'?'Not scheduled yet':(content.publish_date||'Not scheduled yet')],
     ['Status',stageLabel[content.status]||content.status||'-'],
     ['Brand',prettyBrand(content.brand)||'-'],
     ['Content pillar',content.content_pillar||'-'],
