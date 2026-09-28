@@ -186,6 +186,7 @@ function App(){
   const [metricContent,setMetricContent]=useState(null)
   const [socialContent,setSocialContent]=useState(null)
   const [detailContent,setDetailContent]=useState(null)
+  const [stageDateModal,setStageDateModal]=useState(null)
   const [notice,setNotice]=useState('')
   const fileInput=useRef(null)
   const autoSyncAttempted=useRef(new Set())
@@ -373,34 +374,51 @@ function App(){
     const nums=allCodes.filter(x=>x?.startsWith(`${prefix}-${year}-`)).map(x=>Number(x.split('-').pop())).filter(Number.isFinite)
     return `${prefix}-${year}-${String((Math.max(0,...nums)+1)).padStart(3,'0')}`
   }
+  async function applyStageChange(id,target,publishDate){
+    const before=rows
+    setRows(r=>r.map(x=>x.id===id?{...x,status:target,publish_date:publishDate}:x))
+    const {error}=await supabase.from('contents').update({status:target,publish_date:publishDate}).eq('id',id)
+    if(error){
+      setRows(before)
+      setNotice(error.message)
+      return false
+    }
+    if(target==='approved')setNotice('Idea approved dan tanggal posting sudah ditetapkan.')
+    return true
+  }
+
   async function moveStage(id,status){
     if(!canEdit)return
     const target=normalizeStatusValue(status)
     const row=rows.find(x=>x.id===id)
     if(!row)return
+
     let publishDate=row.publish_date||null
 
     if(requiresPublishDate(target)&&!publishDate){
-      const entered=window.prompt(
-        'Idea sudah approved. Masukkan tanggal posting (YYYY-MM-DD):',
-        new Date().toISOString().slice(0,10)
-      )
-      if(!entered)return
-      const normalized=normalizeImportDate(entered)
-      if(!normalized){
-        setNotice('Tanggal posting tidak valid. Gunakan format YYYY-MM-DD.')
-        return
-      }
-      publishDate=normalized
+      setStageDateModal({
+        id,
+        target,
+        title:row.title||'Content',
+        date:new Date().toISOString().slice(0,10)
+      })
+      return
     }
 
     if(target==='idea')publishDate=null
+    await applyStageChange(id,target,publishDate)
+  }
 
-    const before=rows
-    setRows(r=>r.map(x=>x.id===id?{...x,status:target,publish_date:publishDate}:x))
-    const {error}=await supabase.from('contents').update({status:target,publish_date:publishDate}).eq('id',id)
-    if(error){setRows(before);setNotice(error.message)}
-    else if(target==='approved')setNotice('Idea approved dan tanggal posting sudah ditetapkan.')
+  async function confirmStageDate(){
+    if(!stageDateModal)return
+    const normalized=normalizeImportDate(stageDateModal.date)
+    if(!normalized){
+      setNotice('Pilih tanggal posting yang valid.')
+      return
+    }
+    const {id,target}=stageDateModal
+    const ok=await applyStageChange(id,target,normalized)
+    if(ok)setStageDateModal(null)
   }
   async function saveMetrics(contentId,data){
     const payload={...data,content_id:contentId,measured_at:new Date().toISOString().slice(0,10),created_by:session.user.id,source:'manual'}
@@ -770,6 +788,31 @@ function App(){
       <input ref={fileInput} hidden type="file" accept=".csv,text/csv" onChange={e=>importCsv(e.target.files?.[0])}/>
     </main>
     {showForm&&<ContentForm teamMembers={teamMembers} onClose={()=>setShowForm(false)} onSave={saveContent}/>}
+    {stageDateModal&&<div className="modal">
+      <div className="modal-card stage-date-modal">
+        <div className="modal-title">
+          <div>
+            <div className="eyebrow">IDEA APPROVAL</div>
+            <h2>Set Posting Date</h2>
+            <p><b>{stageDateModal.title}</b> sudah masuk ke Idea Approved. Tentukan kapan konten akan diposting.</p>
+          </div>
+          <button type="button" className="close-btn" onClick={()=>setStageDateModal(null)}><X size={20}/></button>
+        </div>
+        <label className="stage-date-field">Posting Date
+          <input
+            type="date"
+            autoFocus
+            value={stageDateModal.date||''}
+            onChange={e=>setStageDateModal(x=>({...x,date:e.target.value}))}
+          />
+          <small>Tanggal ini akan masuk ke Content Calendar dan menjadi target posting tim.</small>
+        </label>
+        <div className="modal-actions stage-date-actions">
+          <button type="button" className="secondary" onClick={()=>setStageDateModal(null)}>Cancel</button>
+          <button type="button" className="primary" onClick={confirmStageDate} disabled={!stageDateModal.date}>Confirm & Approve</button>
+        </div>
+      </div>
+    </div>}
     {editContent&&<ContentForm content={editContent} teamMembers={teamMembers} onClose={()=>setEditContent(null)} onSave={payload=>updateContent(editContent.id,payload)}/>}
     {metricContent&&<MetricsModal content={metricContent} metrics={metricContent} onClose={()=>setMetricContent(null)} onSave={saveMetrics}/>} 
     {socialContent&&<SocialLinksModal content={socialContent} onClose={()=>setSocialContent(null)} onSave={saveSocialLinks}/>}
