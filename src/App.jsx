@@ -1256,6 +1256,90 @@ function SocialPlatformCell({platform,url,metric,manualActive=false}){
   </div>
 }
 
+function contentPreviewSource(row){
+  const igMetric=row.social_platforms?.instagram||null
+  const ttMetric=row.social_platforms?.tiktok||null
+  const igUrl=row.instagram_url||igMetric?.post_url||''
+  const ttUrl=row.tiktok_url||ttMetric?.post_url||''
+  const published=row.publish_url||''
+
+  const platform=normalizePlatform(row.platform)
+  if(platform==='TikTok'&&ttUrl)return {platform:'TikTok',url:ttUrl,externalId:ttMetric?.external_post_id||''}
+  if(platform==='Instagram'&&igUrl)return {platform:'Instagram',url:igUrl,externalId:igMetric?.external_post_id||''}
+
+  if(platform==='Instagram & TikTok'){
+    const igViews=Number(igMetric?.views||0)
+    const ttViews=Number(ttMetric?.views||0)
+    if(ttUrl&&(!igUrl||ttViews>=igViews))return {platform:'TikTok',url:ttUrl,externalId:ttMetric?.external_post_id||''}
+    if(igUrl)return {platform:'Instagram',url:igUrl,externalId:igMetric?.external_post_id||''}
+  }
+
+  if(/tiktok\.com/i.test(published))return {platform:'TikTok',url:published,externalId:ttMetric?.external_post_id||''}
+  if(/instagram\.com/i.test(published))return {platform:'Instagram',url:published,externalId:igMetric?.external_post_id||''}
+  if(ttUrl)return {platform:'TikTok',url:ttUrl,externalId:ttMetric?.external_post_id||''}
+  if(igUrl)return {platform:'Instagram',url:igUrl,externalId:igMetric?.external_post_id||''}
+  if(published)return {platform:'Published',url:published,externalId:''}
+  return null
+}
+
+function socialEmbedUrl(source){
+  if(!source?.url)return null
+
+  if(source.platform==='Instagram'){
+    try{
+      const u=new URL(source.url)
+      const parts=u.pathname.split('/').filter(Boolean)
+      const type=parts[0]
+      const code=parts[1]
+      if(!['p','reel','reels','tv'].includes(type)||!code)return null
+      const normalizedType=type==='reels'?'reel':type
+      return `https://www.instagram.com/${normalizedType}/${code}/embed/`
+    }catch{return null}
+  }
+
+  if(source.platform==='TikTok'){
+    let id=String(source.externalId||'')
+    if(!id){
+      const m=String(source.url).match(/\/video\/(\d+)/)
+      if(m)id=m[1]
+    }
+    return id?`https://www.tiktok.com/player/v1/${id}?autoplay=0&loop=0&controls=1&progress_bar=0&fullscreen_button=1&volume_control=0&music_info=0&description=0&rel=0`:null
+  }
+
+  return null
+}
+
+function TopContentPreview({row}){
+  const source=contentPreviewSource(row)
+  if(!source){
+    return <div className="top-content-preview no-preview"><span>NO</span><small>PREVIEW</small></div>
+  }
+
+  const embed=socialEmbedUrl(source)
+  return <a
+    className={`top-content-preview preview-${source.platform.toLowerCase().replace(/\s+/g,'-')}`}
+    href={source.url}
+    target="_blank"
+    rel="noreferrer"
+    title={`Open ${source.platform} post`}
+  >
+    <div className="top-content-preview-bg">
+      <b>{source.platform==='Instagram'?'IG':source.platform==='TikTok'?'TT':'POST'}</b>
+      <small>Open Post</small>
+    </div>
+    {embed&&<iframe
+      src={embed}
+      title={`${row.title} preview`}
+      loading="lazy"
+      scrolling="no"
+      tabIndex="-1"
+      aria-hidden="true"
+      allow="encrypted-media; picture-in-picture"
+    />}
+    <span className="preview-open"><ExternalLink size={11}/></span>
+  </a>
+}
+
 function Insights({rows}){
   const [month,setMonth]=useState(currentMonthKey)
   const monthRows=month==='All'?rows:rows.filter(r=>r.publish_date?.slice(0,7)===month)
@@ -1269,7 +1353,7 @@ function Insights({rows}){
     <MonthPeriodBar rows={rows} value={month} onChange={setMonth} label="Insights period"/>
     <div className="insights-period-summary"><b>{formatMonthKey(month)}</b><span>{monthRows.length} content analyzed · {manualRows.length} manual performance included</span></div>
     <div className="three-col">{[['Content Pillar','content_pillar'],['Platform','platform'],['Post Type','post_type']].map(([title,key])=><section className="panel" key={key}><h2>{title}</h2>{by(key).map(([name,v])=><div className="insight-row" key={name}><div><b>{name}</b><small>{v.count} content</small></div><div><b>{num(v.views)} views</b><small>{num(v.shares)} shares · {money(v.revenue)}</small></div></div>)}</section>)}</div>
-    <section className="panel top-panel"><div className="panel-head"><div><h2>Top-performing content</h2><small className="pipeline-month">{formatMonthKey(month)}</small></div><span>{top.length? 'Auto sync + manual performance':'No performance data recorded yet'}</span></div>{top.length?top.map((r,i)=><div className="top-row" key={r.id}><b>#{i+1}</b><div><strong>{r.title}</strong><small>{r.content_code} · {r.platform} · {r.publish_date||'-'} · {r.metric_source==='manual'?'Manual':'Synced'}</small></div><div><strong>{num(r.views)} views</strong><small>{num(r.shares)} shares · {money(r.revenue)}</small></div></div>):<div className="empty-state">No performance data recorded for {formatMonthKey(month)}.</div>}</section>
+    <section className="panel top-panel"><div className="panel-head"><div><h2>Top-performing content</h2><small className="pipeline-month">{formatMonthKey(month)}</small></div><span>{top.length? 'Auto sync + manual performance':'No performance data recorded yet'}</span></div>{top.length?top.map((r,i)=><div className="top-row" key={r.id}><b className="top-rank">#{i+1}</b><TopContentPreview row={r}/><div className="top-content-copy"><strong>{r.title}</strong><small>{r.content_code} · {r.platform} · {r.publish_date||'-'} · {r.metric_source==='manual'?'Manual':'Synced'}</small></div><div className="top-content-metrics"><strong>{num(r.views)} views</strong><small>{num(r.shares)} shares · {money(r.revenue)}</small></div></div>):<div className="empty-state">No performance data recorded for {formatMonthKey(month)}.</div>}</section>
   </>
 }
 
