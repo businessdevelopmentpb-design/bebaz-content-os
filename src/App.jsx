@@ -1309,23 +1309,22 @@ function socialEmbedUrl(source){
   return null
 }
 
-function TopContentPreview({row}){
+function TopContentPreview({row,onOpen}){
   const source=contentPreviewSource(row)
   if(!source){
     return <div className="top-content-preview no-preview"><span>NO</span><small>PREVIEW</small></div>
   }
 
   const embed=socialEmbedUrl(source)
-  return <a
+  return <button
+    type="button"
     className={`top-content-preview preview-${source.platform.toLowerCase().replace(/\s+/g,'-')}`}
-    href={source.url}
-    target="_blank"
-    rel="noreferrer"
-    title={`Open ${source.platform} post`}
+    onClick={()=>onOpen?.({row,source,embed})}
+    title={`Watch ${source.platform} preview`}
   >
     <div className="top-content-preview-bg">
       <b>{source.platform==='Instagram'?'IG':source.platform==='TikTok'?'TT':'POST'}</b>
-      <small>Open Post</small>
+      <small>Watch Here</small>
     </div>
     {embed&&<iframe
       src={embed}
@@ -1336,12 +1335,49 @@ function TopContentPreview({row}){
       aria-hidden="true"
       allow="encrypted-media; picture-in-picture"
     />}
-    <span className="preview-open"><ExternalLink size={11}/></span>
-  </a>
+    <span className="preview-open">▶</span>
+  </button>
+}
+
+function ContentPreviewModal({preview,onClose}){
+  if(!preview)return null
+  const {row,source,embed}=preview
+  return <div className="modal content-preview-modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="content-preview-card">
+      <div className="content-preview-head">
+        <div>
+          <div className="eyebrow">{source.platform} PREVIEW</div>
+          <h2>{row.title}</h2>
+          <p>{row.content_code} · {row.publish_date||'-'}</p>
+        </div>
+        <button type="button" className="close-btn" onClick={onClose}><X size={20}/></button>
+      </div>
+
+      <div className={`content-preview-player player-${source.platform.toLowerCase().replace(/\s+/g,'-')}`}>
+        {embed
+          ?<iframe
+            src={embed}
+            title={`${row.title} full preview`}
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            allowFullScreen
+          />
+          :<div className="preview-unavailable"><b>Preview tidak tersedia di dalam sistem.</b><span>Gunakan tombol Open Original Post.</span></div>}
+      </div>
+
+      <div className="content-preview-footer">
+        <div>
+          <small>Performance</small>
+          <b>{num(row.views)} views · {num(row.shares)} shares</b>
+        </div>
+        <a href={source.url} target="_blank" rel="noreferrer" className="secondary"><ExternalLink size={14}/>Open Original Post</a>
+      </div>
+    </div>
+  </div>
 }
 
 function Insights({rows}){
   const [month,setMonth]=useState(currentMonthKey)
+  const [preview,setPreview]=useState(null)
   const monthRows=month==='All'?rows:rows.filter(r=>r.publish_date?.slice(0,7)===month)
   const manualRows=monthRows.filter(r=>r.metric_source==='manual'&&(
     Number(r.views||0)>0||Number(r.reach||0)>0||Number(r.likes||0)>0||
@@ -1353,7 +1389,8 @@ function Insights({rows}){
     <MonthPeriodBar rows={rows} value={month} onChange={setMonth} label="Insights period"/>
     <div className="insights-period-summary"><b>{formatMonthKey(month)}</b><span>{monthRows.length} content analyzed · {manualRows.length} manual performance included</span></div>
     <div className="three-col">{[['Content Pillar','content_pillar'],['Platform','platform'],['Post Type','post_type']].map(([title,key])=><section className="panel" key={key}><h2>{title}</h2>{by(key).map(([name,v])=><div className="insight-row" key={name}><div><b>{name}</b><small>{v.count} content</small></div><div><b>{num(v.views)} views</b><small>{num(v.shares)} shares · {money(v.revenue)}</small></div></div>)}</section>)}</div>
-    <section className="panel top-panel"><div className="panel-head"><div><h2>Top-performing content</h2><small className="pipeline-month">{formatMonthKey(month)}</small></div><span>{top.length? 'Auto sync + manual performance':'No performance data recorded yet'}</span></div>{top.length?top.map((r,i)=><div className="top-row" key={r.id}><b className="top-rank">#{i+1}</b><TopContentPreview row={r}/><div className="top-content-copy"><strong>{r.title}</strong><small>{r.content_code} · {r.platform} · {r.publish_date||'-'} · {r.metric_source==='manual'?'Manual':'Synced'}</small></div><div className="top-content-metrics"><strong>{num(r.views)} views</strong><small>{num(r.shares)} shares · {money(r.revenue)}</small></div></div>):<div className="empty-state">No performance data recorded for {formatMonthKey(month)}.</div>}</section>
+    <section className="panel top-panel"><div className="panel-head"><div><h2>Top-performing content</h2><small className="pipeline-month">{formatMonthKey(month)}</small></div><span>{top.length? 'Auto sync + manual performance':'No performance data recorded yet'}</span></div>{top.length?top.map((r,i)=><div className="top-row" key={r.id}><b className="top-rank">#{i+1}</b><TopContentPreview row={r} onOpen={setPreview}/><div className="top-content-copy"><strong>{r.title}</strong><small>{r.content_code} · {r.platform} · {r.publish_date||'-'} · {r.metric_source==='manual'?'Manual':'Synced'}</small></div><div className="top-content-metrics"><strong>{num(r.views)} views</strong><small>{num(r.shares)} shares · {money(r.revenue)}</small></div></div>):<div className="empty-state">No performance data recorded for {formatMonthKey(month)}.</div>}</section>
+    {preview&&<ContentPreviewModal preview={preview} onClose={()=>setPreview(null)}/>}
   </>
 }
 
