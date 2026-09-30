@@ -105,8 +105,9 @@ const csvHeaderKey=header=>{
     'status':'status','title':'title','judul':'title','content title':'title',
     'brand':'brand','pillar':'content_pillar','content pillar':'content_pillar','content_pillar':'content_pillar',
     'topic':'topic','platform':'platform','type':'post_type','tipe':'post_type','post type':'post_type','content type':'post_type','post_type':'post_type',
-    'pic':'pic','owner':'pic','caption':'caption','copywriting':'copywriting','copy':'copywriting',
+    'pic':'pic','owner':'pic','caption':'caption','description':'description','deskripsi':'description','copywriting':'copywriting','copy':'copywriting',
     'reference url':'reference_url','referensi url':'reference_url','reference':'reference_url','referensi':'reference_url','link reference':'reference_url','reference_url':'reference_url',
+    'reference urls':'reference_urls','multiple references':'reference_urls','references':'reference_urls','referensi urls':'reference_urls',
     'content_code':'content_code','content code':'content_code'
   }
   return aliases[k]||k.replaceAll(' ','_')
@@ -128,6 +129,11 @@ const rate=(a,b)=>b?Number(a||0)/Number(b)*100:0
 const impactScore=r=>Math.min(100,Math.min(rate(r.shares,r.views),10)*4+Math.min(rate(Number(r.likes||0)+Number(r.comments||0)+Number(r.shares||0)+Number(r.saves||0),r.reach),15)*2+Math.min(rate(r.link_clicks,r.reach),10)*2+Math.min(rate(r.transactions,r.link_clicks),20)*0.5)
 const csvEscape=v=>`"${String(v??'').replaceAll('"','""')}"`
 const prettyBrand=b=>b==='PB'?'PhotoBebaz':b
+const referenceUrlsFor=content=>{
+  const list=Array.isArray(content?.reference_urls)?content.reference_urls:[]
+  const legacy=content?.reference_url?[content.reference_url]:[]
+  return [...new Set([...legacy,...list].map(x=>String(x||'').trim()).filter(Boolean))]
+}
 
 function AuthScreen({onSession}){
   const [password,setPassword]=useState('')
@@ -415,7 +421,7 @@ function App(){
   const options=key=>[...new Set(mergedRows.map(r=>r[key]).filter(Boolean))].sort()
   const filtered=useMemo(()=>mergedRows.filter(r=>{
     const month=normalizeStatusValue(r.status)==='idea'?'':(r.publish_date?.slice(0,7)||'')
-    const hay=`${r.content_code} ${r.title} ${r.brand} ${r.content_pillar} ${r.topic} ${r.platform} ${r.post_type} ${r.pic_name} ${r.caption||''} ${r.copywriting||''}`.toLowerCase()
+    const hay=`${r.content_code} ${r.title} ${r.brand} ${r.content_pillar} ${r.topic} ${r.platform} ${r.post_type} ${r.pic_name} ${r.description||''} ${r.caption||''} ${r.copywriting||''} ${referenceUrlsFor(r).join(' ')}`.toLowerCase()
     return (statusFilter==='All'||normalizeStatusValue(r.status)===statusFilter) && (brandFilter==='All'||r.brand===brandFilter) &&
       (platformFilter==='All'||r.platform===platformFilter) && (picFilter==='All'||r.pic_member_id===picFilter) &&
       (monthFilter==='All'||month===monthFilter) && (!query||hay.includes(query.toLowerCase()))
@@ -434,12 +440,14 @@ function App(){
       publish_date:status==='idea'?null:(payload.publish_date||null)
     }
     if(requiresPublishDate(status)&&!normalizedPayload.publish_date){
-      return setNotice('Posting date wajib diisi mulai status Idea Approved.')
+      setNotice('Posting date wajib diisi mulai status Idea Approved.')
+      return false
     }
     const code=normalizedPayload.content_code||nextContentCode(normalizedPayload.brand,normalizedPayload.publish_date)
     const {error}=await supabase.from('contents').insert({...normalizedPayload,content_code:code,created_by:session.user.id})
-    if(error) return setNotice(error.message)
-    setShowForm(false); setNotice(`Created ${code}`); loadAll()
+    if(error){setNotice(error.message);return false}
+    setShowForm(false); setNotice(`Created ${code}`); await loadAll()
+    return true
   }
 
   async function deleteContent(content){
@@ -463,7 +471,8 @@ function App(){
       publish_date:status==='idea'?null:(payload.publish_date||null)
     }
     if(requiresPublishDate(status)&&!clean.publish_date){
-      return setNotice('Posting date wajib diisi mulai status Idea Approved.')
+      setNotice('Posting date wajib diisi mulai status Idea Approved.')
+      return false
     }
     delete clean.id
     delete clean.created_at
@@ -474,10 +483,11 @@ function App(){
     delete clean.social_platforms
     for(const key of Object.keys(EMPTY_METRICS)) delete clean[key]
     const {error}=await supabase.from('contents').update(clean).eq('id',id)
-    if(error)return setNotice(error.message)
+    if(error){setNotice(error.message);return false}
     setEditContent(null)
     setNotice(`Updated ${payload.content_code||'content'}`)
-    loadAll()
+    await loadAll()
+    return true
   }
   function nextContentCode(brand,publishDate,reserved=[]){
     const prefix=(brand||'PB').toLowerCase().includes('land')?'BL':'PB'
