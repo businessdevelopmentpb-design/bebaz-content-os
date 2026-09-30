@@ -1783,19 +1783,21 @@ function ContentDetail({content,onClose,onOpenPlan}){
 
         <section className="detail-section">
           <h3>Creative direction</h3>
+          <div className="detail-copy detail-copy-main"><small>Description</small><p>{content.description||'—'}</p></div>
           <div className="detail-copy detail-copy-main"><small>Caption</small><p>{content.caption||'—'}</p></div>
           <div className="detail-copy detail-copy-main"><small>Copywriting</small><p>{content.copywriting||'—'}</p></div>
+          {Array.isArray(content.copywriting_image_paths)&&content.copywriting_image_paths.length>0&&<div className="detail-copy detail-copy-main"><small>Copywriting References</small><PrivateAssetGallery paths={content.copywriting_image_paths}/></div>}
         </section>
       </div>
 
       <section className="detail-section">
         <div className="panel-head"><h3>Links</h3></div>
         <div className="detail-links">
-          {content.reference_url&&<a href={content.reference_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Reference</a>}
+          {referenceUrlsFor(content).map((url,i)=><a key={url} href={url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Reference {i+1}</a>)}
           {content.brief_url&&<a href={content.brief_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Brief</a>}
           {content.preview_url&&<a href={content.preview_url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>Open Preview</a>}
           {uniquePublishedLinks.map(link=><a key={link.label+link.url} className="published-link" href={link.url} target="_blank" rel="noreferrer"><ExternalLink size={15}/>{link.label}</a>)}
-          {!content.reference_url&&!content.brief_url&&!content.preview_url&&!uniquePublishedLinks.length&&<span>No links added yet</span>}
+          {!referenceUrlsFor(content).length&&!content.brief_url&&!content.preview_url&&!uniquePublishedLinks.length&&<span>No links added yet</span>}
         </div>
       </section>
 
