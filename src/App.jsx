@@ -721,12 +721,13 @@ function App(){
   }
 
   function exportCsv(){
-    const cols=['content_code','publish_date','status','title','brand','content_pillar','topic','platform','post_type','schedule_status','caption','copywriting','reference_url','brief_url','preview_url','publish_url','instagram_url','tiktok_url']
-    const csv=[cols.join(','),...filtered.map(r=>cols.map(c=>csvEscape(r[c])).join(','))].join('\n')
+    const cols=['content_code','publish_date','status','title','description','brand','content_pillar','topic','platform','post_type','schedule_status','caption','copywriting','reference_urls','brief_url','preview_url','publish_url','instagram_url','tiktok_url']
+    const csvValue=(r,key)=>key==='reference_urls'?referenceUrlsFor(r).join(' | '):r[key]
+    const csv=[cols.join(','),...filtered.map(r=>cols.map(key=>csvEscape(csvValue(r,key))).join(','))].join('\n')
     const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download=`bebaz-content-${new Date().toISOString().slice(0,10)}.csv`;a.click();URL.revokeObjectURL(a.href)
   }
   function downloadCsvTemplate(){
-    const headers=['Status','Judul','Brand','Pillar','Topic','Platform','Type','PIC','Caption','Copywriting','Reference URL','Tanggal Posting']
+    const headers=['Status','Judul','Description','Brand','Pillar','Topic','Platform','Type','PIC','Caption','Copywriting','Reference URLs','Tanggal Posting']
     const blank=Array(headers.length).fill('')
     const rows=[headers,...Array.from({length:15},()=>blank)]
     const csv='\ufeff'+rows.map(row=>row.map(csvEscape).join(',')).join('\n')
@@ -789,9 +790,11 @@ function App(){
           platform:normalizeImportPlatform(item.platform),
           post_type:normalizeImportType(item.post_type),
           pic_member_id:pic?.id||null,
+          description:cleanText(item.description)||null,
           caption:cleanText(item.caption)||null,
           copywriting:cleanText(item.copywriting)||null,
-          reference_url:cleanText(item.reference_url)||null,
+          reference_urls:(cleanText(item.reference_urls)||cleanText(item.reference_url)).split(/\s*\|\s*|\r?\n/).map(x=>x.trim()).filter(Boolean),
+          reference_url:((cleanText(item.reference_urls)||cleanText(item.reference_url)).split(/\s*\|\s*|\r?\n/).map(x=>x.trim()).filter(Boolean)[0])||null,
           created_by:session.user.id
         })
       }
