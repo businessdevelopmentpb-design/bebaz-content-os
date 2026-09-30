@@ -1477,11 +1477,14 @@ function PicManager({teamMembers,onChanged,setNotice}){
   </section>
 }
 
+
 function ContentForm({content=null,teamMembers,onClose,onSave}){
   const editing=Boolean(content)
+  const initialReferences=referenceUrlsFor(content)
   const initial={
     content_code:content?.content_code||'',
     title:content?.title||'',
+    description:content?.description||'',
     publish_date:normalizeStatusValue(content?.status||'idea')==='idea'?'':(content?.publish_date||''),
     status:normalizeStatusValue(content?.status||'idea'),
     brand:normalizeBrand(content?.brand),
@@ -1492,7 +1495,7 @@ function ContentForm({content=null,teamMembers,onClose,onSave}){
     pic_member_id:content?.pic_member_id||'',
     caption:content?.caption||'',
     copywriting:content?.copywriting||'',
-    reference_url:content?.reference_url||'',
+    copywriting_image_paths:Array.isArray(content?.copywriting_image_paths)?content.copywriting_image_paths:[],
     brief_url:content?.brief_url||'',
     preview_url:content?.preview_url||'',
     publish_url:content?.publish_url||'',
@@ -1502,39 +1505,230 @@ function ContentForm({content=null,teamMembers,onClose,onSave}){
     notes:content?.notes||''
   }
   const [f,setF]=useState(initial)
+  const [references,setReferences]=useState(initialReferences.length?initialReferences:[''])
+  const [newImages,setNewImages]=useState([])
+  const [existingSigned,setExistingSigned]=useState({})
+  const [removedExisting,setRemovedExisting]=useState([])
+  const [saving,setSaving]=useState(false)
+  const [formError,setFormError]=useState('')
+  const imageInput=useRef(null)
   const set=(k,v)=>setF(x=>({...x,[k]:v===''?null:v}))
   const select=(label,key,values)=><label>{label}<select value={f[key]||''} onChange={e=>set(key,e.target.value)}>{values.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
-  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
-    <form className="modal-card large content-form-modal" onSubmit={e=>{
-      e.preventDefault()
-      if(requiresPublishDate(f.status)&&!f.publish_date){
-        window.alert('Posting date wajib diisi mulai status Idea Approved.')
+
+  useEffect(()=>{
+    const paths=f.copywriting_image_paths||[]
+    if(!paths.length){setExistingSigned({});return}
+    let active=true
+    supabase.storage.from('content-assets').createSignedUrls(paths,60*60).then(({data})=>{
+      if(!active)return
+      const map={}
+      ;(data||[]).forEach((item,i)=>{if(item?.signedUrl)map[paths[i]]=item.signedUrl})
+      setExistingSigned(map)
+    })
+    return()=>{active=false}
+  },[(f.copywriting_image_paths||[]).join('|')])
+
+  const addImageFile=file=>{
+    if(!file||!String(file.type||'').startsWith('image/'))return
+    if(file.size>8*1024*1024){setFormError('Ukuran gambar maksimal 8 MB per file.');return}
+    if((f.copywriting_image_paths?.length||0)+newImages.length>=6){setFormError('Maksimal 6 gambar referensi copywriting per content.');return}
+    const preview=URL.createObjectURL(file)
+    setNewImages(x=>[...x,{id:crypto.randomUUID(),file,preview}])
+    setFormError('')
+  }
+
+  const handlePaste=e=>{
+    const item=[...(e.clipboardData?.items||[])].find(x=>String(x.type||'').startsWith('image/'))
+    if(!item)return
+    const file=item.getAsFile()
+    if(file){e.preventDefault();addImageFile(file)}
+  }
+
+  const removeNewImage=id=>{
+    setNewImages(x=>{
+      const found=x.find(i=>i.id===id)
+      if(found?.preview)URL.revokeObjectURL(found.preview)
+      return x.filter(i=>i.id!==id)
+    })
+  }
+
+  const removeExistingImage=path=>{
+    setF(x=>({...x,copywriting_image_paths:(x.copywriting_image_paths||[]).filter(p=>p!==path)}))
+    setRemovedExisting(x=>x.includes(path)?x:[...x,path])
+  }
+
+  const updateReference=(index,value)=>setReferences(x=>x.map((v,i)=>i===index?value:v))
+  const addReference=()=>setReferences(x=>x.length>=10?x:[...x,''])
+  const removeReference=index=>setReferences(x=>{
+    const next=x.filter((_,i)=>i!==index)
+    return next.length?next:['']
+  })
+
+  const uploadNewImages=async()=>{
+    const paths=[]
+    for(const item of newImages){
+      const ext=(item.file.name?.split('.').pop()||item.file.type?.split('/').pop()||'png').replace(/[^a-z0-9]/gi,'').toLowerCase()||'png'
+      const storagePath='copywriting/'+new Date().toISOString().slice(0,10)+'/'+crypto.randomUUID()+'.'+ext
+      const {error}=await supabase.storage.from('content-assets').upload(storagePath,item.file,{
+        cacheControl:'3600',
+        upsert:false,
+        contentType:item.file.type||'image/png'
+      })
+      if(error){
+        if(paths.length)await supabase.storage.from('content-assets').remove(paths)
+        throw error
+      }
+      paths.push(storagePath)
+    }
+    return paths
+  }
+
+  const submit=async e=>{
+    e.preventDefault()
+    if(saving)return
+    if(requiresPublishDate(f.status)&&!f.publish_date){
+      window.alert('Posting date wajib diisi mulai status Idea Approved.')
+      return
+    }
+    const cleanRefs=[...new Set(references.map(x=>String(x||'').trim()).filter(Boolean))]
+    setSaving(true)
+    setFormError('')
+    let uploaded=[]
+    try{
+      uploaded=await uploadNewImages()
+      const payload={
+        ...f,
+        description:String(f.description||'').trim()||null,
+        publish_date:f.status==='idea'?null:(f.publish_date||null),
+        reference_urls:cleanRefs,
+        reference_url:cleanRefs[0]||null,
+        copywriting_image_paths:[...(f.copywriting_image_paths||[]),...uploaded]
+      }
+      const ok=await onSave(payload)
+      if(!ok){
+        if(uploaded.length)await supabase.storage.from('content-assets').remove(uploaded)
+        setSaving(false)
         return
       }
-      onSave({...f,publish_date:f.status==='idea'?null:(f.publish_date||null)})
-    }}>
-      <div className="modal-title"><div><div className="eyebrow">{editing?'REVISE CONTENT':'NEW CONTENT'}</div><h2>{editing?'Edit Content':'New Content'}</h2><p>{editing?`${content.content_code} · Update planning tanpa membuat record baru.`:'Create one accountable content record.'}</p></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div>
+      if(removedExisting.length)await supabase.storage.from('content-assets').remove(removedExisting)
+      newImages.forEach(i=>i.preview&&URL.revokeObjectURL(i.preview))
+    }catch(err){
+      setFormError(err?.message||'Gagal menyimpan gambar copywriting.')
+      if(uploaded.length)await supabase.storage.from('content-assets').remove(uploaded)
+      setSaving(false)
+    }
+  }
+
+  return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&!saving&&onClose()}>
+    <form className="modal-card large content-form-modal" onSubmit={submit}>
+      <div className="modal-title">
+        <div>
+          <div className="eyebrow">{editing?'REVISE CONTENT':'NEW CONTENT'}</div>
+          <h2>{editing?'Edit Content':'New Content'}</h2>
+          <p>{editing?(content.content_code+' · Update planning tanpa membuat record baru.'):'Create one accountable content record.'}</p>
+        </div>
+        <button type="button" className="close-btn" onClick={onClose} disabled={saving}><X/></button>
+      </div>
+
       <div className="form-grid">
         <label className="span2">Title<input required value={f.title||''} onChange={e=>set('title',e.target.value)}/></label>
         <label>Status<select value={f.status||'idea'} onChange={e=>{
           const next=e.target.value
           setF(x=>({...x,status:next,publish_date:next==='idea'?null:x.publish_date}))
         }}>{STAGES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select><small className="field-help">Idea tidak membutuhkan tanggal posting.</small></label>
+
         {(requiresPublishDate(f.status)||Boolean(f.publish_date))&&<label>Posting Date {requiresPublishDate(f.status)?'*':''}<input type="date" required={requiresPublishDate(f.status)} value={f.publish_date||''} onChange={e=>set('publish_date',e.target.value)}/><small className="field-help">{requiresPublishDate(f.status)?'Wajib setelah Idea Approved.':'Tanggal existing; boleh dikosongkan jika belum dijadwalkan.'}</small></label>}
+
         {select('Brand','brand',CONTENT_BRANDS)}
         <label>PIC<select value={f.pic_member_id||''} onChange={e=>set('pic_member_id',e.target.value)}><option value="">Unassigned</option>{teamMembers.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
         {select('Pillar','content_pillar',CONTENT_PILLARS)}
         {select('Topic','topic',CONTENT_TOPICS)}
         {select('Platform','platform',CONTENT_PLATFORMS)}
         {select('Type','post_type',CONTENT_TYPES)}
+
+        <label className="span3 content-description-field">Description
+          <textarea rows="4" value={f.description||''} onChange={e=>set('description',e.target.value)} placeholder="Jelaskan ide, angle, objective singkat, talent/location, atau context yang perlu dipahami tim…"/>
+        </label>
+
         <div className="span3 creative-writing-pair">
-          <label>Caption<textarea rows="6" value={f.caption||''} onChange={e=>set('caption',e.target.value)} placeholder="Caption final untuk Instagram / TikTok…"/></label>
-          <label>Copywriting<textarea rows="6" value={f.copywriting||''} onChange={e=>set('copywriting',e.target.value)} placeholder="Script, wording, headline, atau text yang tampil di konten…"/></label>
+          <label>Caption
+            <textarea rows="6" value={f.caption||''} onChange={e=>set('caption',e.target.value)} placeholder="Caption final untuk Instagram / TikTok…"/>
+          </label>
+
+          <div className="copywriting-composer">
+            <label>Copywriting
+              <textarea rows="6" value={f.copywriting||''} onChange={e=>set('copywriting',e.target.value)} onPaste={handlePaste} placeholder="Script, wording, headline, atau text yang tampil di konten…"/>
+            </label>
+
+            <div className="copywriting-paste-zone" tabIndex="0" onPaste={handlePaste}>
+              <div>
+                <b>Paste reference image — Ctrl+V</b>
+                <span>Copy screenshot dari WhatsApp / browser lalu paste di area ini. Bisa sampai 6 gambar.</span>
+              </div>
+              <button type="button" className="secondary copy-image-upload" onClick={()=>imageInput.current?.click()}>Choose Image</button>
+              <input ref={imageInput} hidden type="file" accept="image/*" multiple onChange={e=>{
+                ;[...(e.target.files||[])].forEach(addImageFile)
+                e.target.value=''
+              }}/>
+            </div>
+
+            {((f.copywriting_image_paths||[]).length>0||newImages.length>0)&&<div className="copywriting-image-grid">
+              {(f.copywriting_image_paths||[]).map(path=><div className="copywriting-image-card" key={path}>
+                {existingSigned[path]?<img src={existingSigned[path]} alt="Copywriting reference"/>:<div className="image-loading">Loading…</div>}
+                <button type="button" onClick={()=>removeExistingImage(path)} title="Remove image"><X size={14}/></button>
+              </div>)}
+              {newImages.map(item=><div className="copywriting-image-card" key={item.id}>
+                <img src={item.preview} alt="New copywriting reference"/>
+                <button type="button" onClick={()=>removeNewImage(item.id)} title="Remove image"><X size={14}/></button>
+                <small>NEW</small>
+              </div>)}
+            </div>}
+          </div>
         </div>
-        <label className="span3">Reference URL<input type="url" value={f.reference_url||''} onChange={e=>set('reference_url',e.target.value)} placeholder="https://..."/></label>
+
+        <div className="span3 reference-builder">
+          <div className="reference-builder-head">
+            <div><b>References</b><span>Tambahkan semua link referensi yang dipakai tim.</span></div>
+            <button type="button" className="secondary" onClick={addReference} disabled={references.length>=10}><Plus size={14}/>Add Reference</button>
+          </div>
+          <div className="reference-list">
+            {references.map((url,index)=><div className="reference-row" key={index}>
+              <span>{index+1}</span>
+              <input type="url" value={url} onChange={e=>updateReference(index,e.target.value)} placeholder="https://..."/>
+              <button type="button" className="reference-remove" onClick={()=>removeReference(index)} title="Remove reference"><X size={15}/></button>
+            </div>)}
+          </div>
+        </div>
       </div>
-      <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary">{editing?'Save Revision':'Create Content'}</button></div>
+
+      {formError&&<div className="content-form-error">{formError}</div>}
+      <div className="modal-actions">
+        <button type="button" className="secondary" onClick={onClose} disabled={saving}>Cancel</button>
+        <button className="primary" disabled={saving}>{saving?'Saving…':editing?'Save Revision':'Create Content'}</button>
+      </div>
     </form>
+  </div>
+}
+
+function PrivateAssetGallery({paths=[]}){
+  const [urls,setUrls]=useState({})
+  useEffect(()=>{
+    if(!paths.length){setUrls({});return}
+    let active=true
+    supabase.storage.from('content-assets').createSignedUrls(paths,60*60).then(({data})=>{
+      if(!active)return
+      const map={}
+      ;(data||[]).forEach((item,i)=>{if(item?.signedUrl)map[paths[i]]=item.signedUrl})
+      setUrls(map)
+    })
+    return()=>{active=false}
+  },[paths.join('|')])
+
+  if(!paths.length)return null
+  return <div className="detail-asset-grid">
+    {paths.map((path,i)=>urls[path]
+      ?<a href={urls[path]} target="_blank" rel="noreferrer" key={path}><img src={urls[path]} alt={'Copywriting reference '+(i+1)}/></a>
+      :<div className="image-loading" key={path}>Loading…</div>)}
   </div>
 }
 
