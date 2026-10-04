@@ -890,11 +890,6 @@ function App(){
   if(!authReady)return <div className="loading-screen">Loading Bebaz Content OS…</div>
   if(!session)return <AuthScreen onSession={setSession}/>
 
-  const published=mergedRows.filter(r=>r.status==='published').length
-  const inProduction=mergedRows.filter(r=>['editing','revision'].includes(normalizeStatusValue(r.status))).length
-  const onSchedule=mergedRows.filter(r=>r.schedule_status==='On Schedule').length
-  const totalViews=mergedRows.reduce((s,r)=>s+Number(r.views||0),0)
-  const revenue=mergedRows.reduce((s,r)=>s+Number(r.revenue||0),0)
   const nav=[['Dashboard',LayoutDashboard],['Content Plan',CalendarDays],['Workflow',Columns3],['Performance',Gauge],['Insights',BarChart3],['Social Connections',PlugZap],['PIC List',Users]]
 
   return <div className="app-shell">
@@ -905,7 +900,7 @@ function App(){
     <main>
       <header><div><div className="eyebrow">CONTENT GROWTH OPERATING SYSTEM</div><h1>{page}</h1><p>Plan better creative, ship faster, learn from performance, connect content to business impact.</p></div><div className="header-actions"><button className="secondary icon-btn" onClick={loadAll} title="Refresh"><RefreshCw size={16}/></button>{canEdit&&<button className="primary" onClick={()=>setShowForm(true)}><Plus size={17}/>New Content</button>}</div></header>
       {notice&&<div className="notice"><span>{notice}</span><button onClick={()=>setNotice('')}><X size={15}/></button></div>}
-      {page==='Dashboard'&&<Dashboard rows={mergedRows} published={published} inProduction={inProduction} onSchedule={onSchedule} totalViews={totalViews} revenue={revenue} onOpenDetail={setDetailContent}/>}
+      {page==='Dashboard'&&<Dashboard rows={mergedRows} onOpenDetail={setDetailContent}/>}
       {page==='Content Plan'&&<ContentPlan rows={filtered} loading={loading} query={query} setQuery={setQuery} statusFilter={statusFilter} setStatusFilter={setStatusFilter} brandFilter={brandFilter} setBrandFilter={setBrandFilter} platformFilter={platformFilter} setPlatformFilter={setPlatformFilter} picFilter={picFilter} setPicFilter={setPicFilter} monthFilter={monthFilter} setMonthFilter={setMonthFilter} brands={options('brand')} platforms={options('platform')} teamMembers={teamMembers} months={options('publish_date').map(x=>x.slice(0,7)).filter((x,i,a)=>a.indexOf(x)===i).sort().reverse()} canEdit={canEdit} onEdit={setEditContent} onDelete={deleteContent} onApprove={r=>moveStage(r.id,'approved')} exportCsv={exportCsv} downloadTemplate={downloadCsvTemplate} importClick={()=>fileInput.current?.click()}/>}
       {page==='Workflow'&&<Workflow rows={mergedRows} moveStage={moveStage} canEdit={canEdit}/>}
       {page==='Performance'&&<Performance rows={mergedRows} onEdit={setMetricContent} onEditLinks={setSocialContent} onSync={syncSocialPerformance} onSyncAll={syncAllPublished} syncingIds={syncingIds} canEdit={canEdit}/>}
@@ -952,19 +947,66 @@ function App(){
   </div>
 }
 
-function Dashboard({rows,published,inProduction,onSchedule,totalViews,revenue,onOpenDetail}){
+function Dashboard({rows,onOpenDetail}){
   const today=new Date()
   const [calendarCursor,setCalendarCursor]=useState(()=>new Date(today.getFullYear(),today.getMonth(),1))
   const monthKey=`${calendarCursor.getFullYear()}-${String(calendarCursor.getMonth()+1).padStart(2,'0')}`
   const pipelineMonthName=calendarCursor.toLocaleDateString('en-US',{month:'long',year:'numeric'})
-  const monthRows=rows.filter(r=>normalizeStatusValue(r.status)==='idea'||r.publish_date?.slice(0,7)===monthKey)
+
+  // The Content Calendar month is the single source of truth for Dashboard KPIs.
+  // Idea records have no posting date yet, so they intentionally stay outside monthly KPIs
+  // until they are approved and assigned a publish_date.
+  const monthRows=rows.filter(r=>
+    normalizeStatusValue(r.status)!=='idea'&&
+    String(r.publish_date||'').slice(0,7)===monthKey
+  )
+
+  const monthPublished=monthRows.filter(r=>normalizeStatusValue(r.status)==='published').length
+  const monthInProduction=monthRows.filter(r=>['editing','revision'].includes(normalizeStatusValue(r.status))).length
+  const monthOnSchedule=monthRows.filter(r=>r.schedule_status==='On Schedule').length
+  const monthOnTimeEligible=monthRows.filter(r=>Boolean(r.schedule_status)).length
+  const monthOnTimeRate=monthOnTimeEligible?monthOnSchedule/monthOnTimeEligible*100:0
+  const monthViews=monthRows.reduce((sum,r)=>sum+Number(r.views||0),0)
+  const monthRevenue=monthRows.reduce((sum,r)=>sum+Number(r.revenue||0),0)
   const needsReview=monthRows.filter(r=>normalizeStatusValue(r.status)==='revision').length
-  const onTimeRate=rows.length?onSchedule/rows.length*100:0
-  const cards=[['Total Planned',rows.length],['Published',published],['In Production',inProduction],['On-time Rate',pct(onTimeRate)],['Total Views',num(totalViews)],['Attributed Revenue',money(revenue)]]
-  return <><section className="metrics-grid">{cards.map(([k,v])=><div className="metric" key={k}><span>{k}</span><strong>{v}</strong></div>)}</section>
+
+  const cards=[
+    ['Total Planned',monthRows.length],
+    ['Published',monthPublished],
+    ['In Production',monthInProduction],
+    ['On-time Rate',pct(monthOnTimeRate)],
+    ['Total Views',num(monthViews)],
+    ['Attributed Revenue',money(monthRevenue)]
+  ]
+
+  return <>
+    <div className="dashboard-period-strip">
+      <div><span>Dashboard Period</span><b>{pipelineMonthName}</b></div>
+      <small>KPI mengikuti bulan yang sedang dipilih pada Content Calendar.</small>
+    </div>
+    <section className="metrics-grid">
+      {cards.map(([k,v])=><div className="metric" key={k}><span>{k}</span><strong>{v}</strong><small>{pipelineMonthName}</small></div>)}
+    </section>
     <ContentCalendar rows={rows} onOpenDetail={onOpenDetail} cursor={calendarCursor} setCursor={setCalendarCursor}/>
-    <section className="two-col"><div className="panel"><div className="panel-head"><div><h2>Current pipeline</h2><small className="pipeline-month">{pipelineMonthName} · {monthRows.length} content</small></div><span>{needsReview} need review</span></div>{WORKFLOW_STAGES.map(([value,label])=>{const count=monthRows.filter(r=>r.status===value).length;return <div className="summary-line" key={value}><span>{label}</span><div><b>{count}</b><i style={{width:`${Math.min(100,count/Math.max(1,monthRows.length)*500)}%`}}/></div></div>})}</div>
-    <div className="panel"><div className="panel-head"><h2>Head priorities</h2></div><div className="priority"><Sparkles/><div><b>Creative quality before volume</b><p>Challenge hook, storytelling, shareability and CTA before publishing.</p></div></div><div className="priority"><Users/><div><b>Clear ownership</b><p>Every content item should have one accountable PIC, deadline and next action.</p></div></div><div className="priority"><Gauge/><div><b>Close the learning loop</b><p>Published content is not done until performance and learnings are recorded.</p></div></div></div></section></>
+    <section className="two-col">
+      <div className="panel">
+        <div className="panel-head">
+          <div><h2>Current pipeline</h2><small className="pipeline-month">{pipelineMonthName} · {monthRows.length} content</small></div>
+          <span>{needsReview} need review</span>
+        </div>
+        {WORKFLOW_STAGES.map(([value,label])=>{
+          const count=monthRows.filter(r=>normalizeStatusValue(r.status)===value).length
+          return <div className="summary-line" key={value}><span>{label}</span><div><b>{count}</b><i style={{width:`${Math.min(100,count/Math.max(1,monthRows.length)*500)}%`}}/></div></div>
+        })}
+      </div>
+      <div className="panel">
+        <div className="panel-head"><h2>Head priorities</h2></div>
+        <div className="priority"><Sparkles/><div><b>Creative quality before volume</b><p>Challenge hook, storytelling, shareability and CTA before publishing.</p></div></div>
+        <div className="priority"><Users/><div><b>Clear ownership</b><p>Every content item should have one accountable PIC, deadline and next action.</p></div></div>
+        <div className="priority"><Gauge/><div><b>Close the learning loop</b><p>Published content is not done until performance and learnings are recorded.</p></div></div>
+      </div>
+    </section>
+  </>
 }
 
 function ContentCalendar({rows,onOpenDetail,cursor,setCursor}){
