@@ -583,17 +583,33 @@ function App(){
   async function syncSocialPerformance(contentId,{quiet=false}={}){
     setSyncingIds(x=>({...x,[contentId]:true}))
 
-    // Keep manual performance active until the external source really succeeds.
-    // A failed/pending sync must never erase or demote valid manual metrics.
+    // Direct API is preferred. If it cannot resolve fresh data yet,
+    // immediately fall back to the Windsor cache so a TikTok link can
+    // still populate performance instead of staying at 0 / Waiting Source.
     let data=null
     let error=null
     const direct=await supabase.functions.invoke('sync-social-performance',{body:{content_id:contentId}})
     if(!direct.error){
       data=direct.data
-    }else{
+    }
+
+    const shouldFallback=Boolean(
+      direct.error ||
+      !data ||
+      ['waiting_data','connection_required','error'].includes(data?.status)
+    )
+
+    if(shouldFallback){
       const fallback=await supabase.rpc('sync_windsor_content',{p_content_id:contentId})
-      data=fallback.data
-      error=fallback.error
+      if(!fallback.error && fallback.data?.matched>0){
+        data=fallback.data
+        error=null
+      }else if(direct.error){
+        data=fallback.data
+        error=fallback.error||direct.error
+      }else if(fallback.error){
+        error=fallback.error
+      }
     }
 
     setSyncingIds(x=>({...x,[contentId]:false}))
@@ -617,14 +633,25 @@ function App(){
     const clean={
       instagram_url:links.instagram_url?.trim()||null,
       tiktok_url:links.tiktok_url?.trim()||null,
+      auto_sync_performance:true,
       performance_sync_status:(links.instagram_url?.trim()||links.tiktok_url?.trim())?'ready':'waiting_link',
       performance_sync_error:null
     }
     const {error}=await supabase.from('contents').update(clean).eq('id',contentId)
     if(error)return setNotice(error.message)
+
+    // Optimistic local update prevents the row from flashing back to
+    // "No link" while the backend is resolving the TikTok short URL.
+    setRows(prev=>prev.map(row=>row.id===contentId?{...row,...clean}:row))
     setSocialContent(null)
-    setNotice('Social links saved. Syncing performance…')
-    await loadAll()
+
+    if(!clean.instagram_url&&!clean.tiktok_url){
+      setNotice('Social links removed.')
+      await loadAll()
+      return
+    }
+
+    setNotice('Social links saved. Reading performance automatically…')
     await syncSocialPerformance(contentId)
   }
 
