@@ -1889,19 +1889,93 @@ function ContentDetail({content,onClose,onOpenPlan}){
 }
 
 function SocialLinksModal({content,onClose,onSave}){
+  const platform=normalizePlatform(content.platform)
+  const showInstagram=platform==='Instagram'||platform==='Instagram & TikTok'
+  const showTikTok=platform==='TikTok'||platform==='Instagram & TikTok'
   const [instagram,setInstagram]=useState(content.instagram_url||'')
   const [tiktok,setTiktok]=useState(content.tiktok_url||'')
-  const validIg=!instagram||/^https?:\/\/(www\.)?instagram\.com\//i.test(instagram)
-  const validTt=!tiktok||/^https?:\/\/(www\.|vm\.|vt\.)?tiktok\.com\//i.test(tiktok)
+
+  const validSocialUrl=(value,network)=>{
+    const raw=cleanText(value)
+    if(!raw)return true
+    try{
+      const u=new URL(raw)
+      const host=u.hostname.toLowerCase().replace(/^www\./,'')
+      if(network==='instagram')return host==='instagram.com'||host.endsWith('.instagram.com')
+      if(network==='tiktok')return host==='tiktok.com'||host.endsWith('.tiktok.com')
+      return false
+    }catch{return false}
+  }
+
+  const validIg=!showInstagram||validSocialUrl(instagram,'instagram')
+  const validTt=!showTikTok||validSocialUrl(tiktok,'tiktok')
+  const hasRequiredLink=(
+    platform==='Instagram'?Boolean(cleanText(instagram)):
+    platform==='TikTok'?Boolean(cleanText(tiktok)):
+    Boolean(cleanText(instagram)||cleanText(tiktok))
+  )
+
+  const submit=e=>{
+    e.preventDefault()
+    if(!validIg||!validTt||!hasRequiredLink)return
+    onSave(content.id,{
+      instagram_url:showInstagram?cleanText(instagram):'',
+      tiktok_url:showTikTok?cleanText(tiktok):''
+    })
+  }
+
   return <div className="modal" onMouseDown={e=>e.target===e.currentTarget&&onClose()}>
-    <form className="modal-card social-links-modal" onSubmit={e=>{e.preventDefault();if(validIg&&validTt)onSave(content.id,{instagram_url:instagram,tiktok_url:tiktok})}}>
-      <div className="modal-title"><div><div className="eyebrow">SOCIAL PERFORMANCE LINKS</div><h2>{content.title}</h2><p>Paste the published post URL. Saving immediately triggers performance sync.</p></div><button type="button" className="close-btn" onClick={onClose}><X/></button></div>
-      <div className="social-link-fields">
-        <label><span>Instagram post / Reel URL</span><input value={instagram} onChange={e=>setInstagram(e.target.value)} placeholder="https://www.instagram.com/reel/..."/>{!validIg&&<small className="field-error">Masukkan link Instagram yang valid.</small>}</label>
-        <label><span>TikTok video URL</span><input value={tiktok} onChange={e=>setTiktok(e.target.value)} placeholder="https://www.tiktok.com/@account/video/..."/>{!validTt&&<small className="field-error">Masukkan link TikTok yang valid.</small>}</label>
+    <form className="modal-card social-links-modal" onSubmit={submit}>
+      <div className="modal-title">
+        <div>
+          <div className="eyebrow">SOCIAL PERFORMANCE LINK</div>
+          <h2>{content.title}</h2>
+          <p>{platform==='Instagram'
+            ?'Konten ini untuk Instagram. Masukkan link post / Reel Instagram.'
+            :platform==='TikTok'
+              ?'Konten ini untuk TikTok. Masukkan link video TikTok.'
+              :'Konten ini untuk Instagram & TikTok. Masukkan link platform yang sudah dipublish.'}</p>
+        </div>
+        <button type="button" className="close-btn" onClick={onClose}><X/></button>
       </div>
-      <div className="social-link-explain"><Zap size={17}/><p><b>Auto-sync flow:</b> link disimpan → Content OS mencari post/video ID → mengambil metrics API → menyimpan snapshot → Performance & Insights ter-update otomatis.</p></div>
-      <div className="modal-actions"><button type="button" className="secondary" onClick={onClose}>Cancel</button><button className="primary" disabled={!validIg||!validTt}>Save & Sync</button></div>
+
+      <div className="social-link-fields">
+        {showInstagram&&<label>
+          <span>Instagram post / Reel URL</span>
+          <input
+            value={instagram}
+            onChange={e=>setInstagram(e.target.value)}
+            placeholder="https://www.instagram.com/reel/..."
+            autoFocus={platform==='Instagram'}
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck="false"
+          />
+          {!validIg&&<small className="field-error">Masukkan link Instagram yang valid.</small>}
+        </label>}
+
+        {showTikTok&&<label>
+          <span>TikTok video URL</span>
+          <input
+            value={tiktok}
+            onChange={e=>setTiktok(e.target.value)}
+            placeholder="https://vt.tiktok.com/... atau https://www.tiktok.com/@account/video/..."
+            autoFocus={platform==='TikTok'}
+            inputMode="url"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck="false"
+          />
+          {!validTt&&<small className="field-error">Masukkan link TikTok yang valid.</small>}
+        </label>}
+      </div>
+
+      <div className="social-link-explain"><Zap size={17}/><p><b>Otomatis:</b> setelah link disimpan, Content OS langsung membaca post/video ID dan menarik performance tanpa perlu input platform lain.</p></div>
+      <div className="modal-actions">
+        <button type="button" className="secondary" onClick={onClose}>Cancel</button>
+        <button className="primary" disabled={!validIg||!validTt||!hasRequiredLink}>Save & Auto Sync</button>
+      </div>
     </form>
   </div>
 }
